@@ -4,22 +4,27 @@ import json
 import logging
 import os
 import time
+from datetime import datetime, timezone
 
 import schedule
 
 from . import config
 from .details import get_extension_details
 from .download import ChromeExtensionDownloader
-from .malicious import MaliciousChecker
+from .malicious import DOWNLOADABLE, MaliciousChecker, ScanStatus
 
 logger = logging.getLogger(__name__)
 
-
 class ChromeExtensionSync:
-    def __init__(self, extensions_file=None, downloader=None, checker=None):
+    def __init__(self, extensions_file=None, downloader=None, checker=None,
+                 report_file=None):
         self.extensions_file = extensions_file or self._default_extensions_file()
         self.downloader = downloader or ChromeExtensionDownloader()
         self.checker = checker or MaliciousChecker()
+        self.report_file = report_file or os.environ.get(
+            "CWS_SYNC_REPORT_FILE",
+            os.path.join(config.ARTIFACTS_DIR, "last_sync_report.json"),
+        )
 
     @staticmethod
     def _default_extensions_file():
@@ -32,13 +37,24 @@ class ChromeExtensionSync:
             "recommended_extensions.json",
         )
 
+    def load_recommended_extensions(self):
+        """Load the recommended extension list (objects with id and name)."""
+        if not os.path.exists(self.extensions_file):
+            logger.warning("Extensions file not found: %s", self.extensions_file)
+            return []
+        with open(self.extensions_file, "r") as handle:
+            return json.load(handle)
+
     def load_specified_extensions(self):
         """Load manually specified extensions, if the file exists.
 
         Same format as the recommended list: objects with id/name or plain
         ID strings. Missing file means no manual additions.
         """
-        path = config.SPECIFIED_EXTENSIONS_FILE
+        path = os.environ.get("CWS_SPECIFIED_EXTENSIONS_FILE")
+        if path is None:
+            artifacts_dir = os.environ.get("CWS_ARTIFACTS_DIR", config.ARTIFACTS_DIR)
+            path = os.path.join(artifacts_dir, "specified.json")
         if not os.path.exists(path):
             return []
         with open(path, "r") as handle:
@@ -48,7 +64,8 @@ class ChromeExtensionSync:
         """Recommended extensions merged with manually specified ones.
 
         Manually specified entries win on ID conflicts so a custom name can
-        override the recommended one.
+        override the recommended one. The blocklist applies after the merge,
+        so a manual entry can never resurrect a blocked ID.
         """
         merged = {}
         for ext in self.load_recommended_extensions() + self.load_specified_extensions():
@@ -56,46 +73,94 @@ class ChromeExtensionSync:
             merged[ext_id] = ext
         return list(merged.values())
 
-    def load_recommended_extensions(self):
-        """Load the recommended extension list (objects with id and name)."""
-        if not os.path.exists(self.extensions_file):
-            logger.warning("Extensions file not found: %s", self.extensions_file)
-            return []
-        with open(self.extensions_file, "r") as handle:
-            return json.load(handle)
-
     def sync_extensions(self, force=False):
-        """Mirror every recommended extension, skipping existing files unless forced."""
-        from datetime import datetime
+        """Mirror every extension, skipping blocked ones and scan outages.
 
+        Returns the number of unrecovered problems (resolution failures,
+        download failures and risk-scan errors). Blocked extensions are an
+        intended exclusion, not a failure.
+        """
         logger.info("Starting sync at %s", datetime.now())
         extensions = self.load_extensions()
+        report = {
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "extensions": [],
+        }
         failures = 0
+        blocked = 0
+        scan_errors = 0
 
         for ext in extensions:
             extension_id = ext["id"] if isinstance(ext, dict) else ext
             configured_name = ext.get("name") if isinstance(ext, dict) else None
-            if self.checker.is_malicious(extension_id):
+
+            status = self.checker.check(extension_id)
+            if status not in DOWNLOADABLE:
+                report["extensions"].append(
+                    {"id": extension_id, "status": status.value}
+                )
+                if status is ScanStatus.SCAN_ERROR:
+                    scan_errors += 1
+                else:
+                    blocked += 1
                 continue
+
             try:
                 details = get_extension_details(extension_id, name=configured_name)
             except Exception as exc:
                 logger.error("Could not resolve extension %s: %s", extension_id, exc)
                 failures += 1
+                report["extensions"].append(
+                    {"id": extension_id, "status": "resolve_error", "error": str(exc)}
+                )
                 continue
-            if self.downloader.download(
+
+            path = self.downloader.download(
                 details.extension_id, details.name, details.version, force=force
-            ) is None:
+            )
+            if path is None:
                 failures += 1
+                report["extensions"].append(
+                    {"id": extension_id, "status": "download_error"}
+                )
+            else:
+                report["extensions"].append(
+                    {
+                        "id": extension_id,
+                        "status": status.value,
+                        "version": details.version,
+                        "path": path,
+                    }
+                )
 
         self.checker.malicious_list.save()
+        problems = failures + scan_errors
+        report["summary"] = {
+            "total": len(extensions),
+            "mirrored": len(extensions) - blocked - scan_errors - failures,
+            "blocked": blocked,
+            "scan_errors": scan_errors,
+            "failures": failures,
+        }
+        self._write_report(report)
         logger.info(
-            "Sync completed at %s (%d extensions, %d failures)",
+            "Sync completed at %s (%d extensions, %d blocked, %d scan errors, "
+            "%d failures)",
             datetime.now(),
             len(extensions),
+            blocked,
+            scan_errors,
             failures,
         )
-        return failures
+        return problems
+
+    def _write_report(self, report):
+        try:
+            os.makedirs(os.path.dirname(self.report_file) or ".", exist_ok=True)
+            with open(self.report_file, "w") as handle:
+                json.dump(report, handle, indent=4)
+        except OSError as exc:
+            logger.warning("Could not write sync report %s: %s", self.report_file, exc)
 
     def run_forever(self, force=False):
         """Run an initial sync, then re-sync on the configured interval."""

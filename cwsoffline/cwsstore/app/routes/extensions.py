@@ -14,6 +14,7 @@ from fastapi.responses import (
 from fastapi.templating import Jinja2Templates
 
 from app import config
+from app.blocklist import filter_extensions, load_blocked_ids
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ def load_extensions():
     if not os.path.exists(config.EXTENSIONS_FILE):
         return None
     with open(config.EXTENSIONS_FILE, "r") as handle:
-        return json.load(handle)
+        return filter_extensions(json.load(handle))
 
 
 def find_extension(extensions, extension_id):
@@ -69,12 +70,13 @@ def parse_updatecheck_appids(body):
 
 @router.get("/json")
 async def serve_extensions_info_json():
-    """Serve the raw extensions_info.json index."""
-    if os.path.exists(config.EXTENSIONS_FILE):
-        return FileResponse(config.EXTENSIONS_FILE, media_type="application/json")
-    return JSONResponse(
-        content={"error": "extensions_info.json not found"}, status_code=404
-    )
+    """Serve the extensions index, blocklist-filtered like every other route."""
+    extensions = load_extensions()
+    if extensions is None:
+        return JSONResponse(
+            content={"error": "extensions_info.json not found"}, status_code=404
+        )
+    return JSONResponse(content=extensions)
 
 
 @router.api_route("/crx", methods=["GET", "POST"])
@@ -89,13 +91,19 @@ async def serve_update_feed(request: Request):
     if extensions is None:
         return JSONResponse(content={"error": "update feed not built"}, status_code=404)
 
+    requested = set()
     if request.method == "POST":
-        body = await request.body()
-        requested = set(parse_updatecheck_appids(body))
-        if requested:
-            extensions = [
-                ext for ext in extensions if ext.get("extension_id") in requested
-            ]
+        requested = set(parse_updatecheck_appids(await request.body()))
+    elif "x" in request.query_params:
+        # clients2-style GET: /crx?x=id%3D<extension_id>%26uc
+        for part in request.query_params.get("x", "").split("&"):
+            key, _, value = part.partition("=")
+            if key == "id" and value:
+                requested.add(value)
+    if requested:
+        extensions = [
+            ext for ext in extensions if ext.get("extension_id") in requested
+        ]
 
     xml_content = templates.get_template("update.xml").render(
         request=request, extensions=extensions
@@ -135,6 +143,8 @@ async def fetch_extension(extension_id: str):
 @router.get("/download/{extension_id}")
 async def download_extension(extension_id: str):
     """Download the newest mirrored CRX file for a specific extension."""
+    if extension_id in load_blocked_ids():
+        return JSONResponse(content={"error": "Extension is blocked"}, status_code=404)
     extensions = load_extensions()
     extension = find_extension(extensions, extension_id) if extensions else None
     if extension is None:

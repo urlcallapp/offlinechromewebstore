@@ -83,8 +83,18 @@ class ChromeExtensionDownloader:
             return None
 
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        with open(file_path, "wb") as handle:
-            for chunk in response.iter_content(chunk_size=8192):
-                handle.write(chunk)
+        # Write to a temp file and rename, so a concurrent cwsbuild never
+        # reads a partially downloaded CRX.
+        temp_path = file_path + ".part"
+        try:
+            with open(temp_path, "wb") as handle:
+                for chunk in response.iter_content(chunk_size=8192):
+                    handle.write(chunk)
+            os.replace(temp_path, file_path)
+        except OSError as exc:
+            logger.error("Error writing extension %s: %s", extension_id, exc)
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            return None
         logger.info("Successfully downloaded extension: %s", file_path)
         return file_path
