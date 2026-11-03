@@ -29,6 +29,14 @@ MALICIOUS_LIST_FILE = os.environ.get(
     "CWS_MALICIOUS_LIST_FILE", os.path.join(ARTIFACTS_DIR, "malicious_extensions.json")
 )
 
+# Display metadata (tags, origin, description overrides) resolved by cwssync
+# from the store source definitions. Storefront taxonomy only; unrelated to
+# the malicious blocklist.
+EXTENSION_METADATA_FILE = os.environ.get(
+    "CWS_EXTENSION_METADATA_FILE",
+    os.path.join(ARTIFACTS_DIR, "extension_metadata.json"),
+)
+
 
 def load_malicious_ids(path=None):
     """IDs on the malicious extension list; empty set when no list exists."""
@@ -41,6 +49,18 @@ def load_malicious_ids(path=None):
         item["id"] if isinstance(item, dict) else item
         for item in data
         if item
+    }
+
+
+def load_extension_metadata(path=None):
+    """Display metadata per extension ID written by cwssync; empty when absent."""
+    path = path or EXTENSION_METADATA_FILE
+    if not os.path.exists(path):
+        return {}
+    with open(path, "r") as handle:
+        data = json.load(handle)
+    return {
+        ext_id: metadata for ext_id, metadata in data.items() if isinstance(metadata, dict)
     }
 
 
@@ -124,6 +144,12 @@ def build_index(src_folder=None, dest_folder=None, artifacts_dir=None):
     artifacts_dir = artifacts_dir or ARTIFACTS_DIR
 
     extensions = {}
+    extension_metadata = load_extension_metadata(
+        os.environ.get(
+            "CWS_EXTENSION_METADATA_FILE",
+            os.path.join(artifacts_dir or ARTIFACTS_DIR, "extension_metadata.json"),
+        )
+    )
     malicious_path = os.environ.get(
         "CWS_MALICIOUS_LIST_FILE", os.path.join(artifacts_dir, "malicious_extensions.json")
     )
@@ -153,13 +179,20 @@ def build_index(src_folder=None, dest_folder=None, artifacts_dir=None):
                 continue
 
             version = manifest.get("version") or file_version
+            metadata = extension_metadata.get(file_id, {})
+            # A source-entry description wins over the manifest one; tags and
+            # origin classify the extension for filtering. CRXs dropped into
+            # the tree without any source entry are "local".
             entry = extensions.setdefault(
                 file_id,
                 {
                     "name": resolve_name(manifest, file_name or file_id),
                     "extension_id": file_id,
-                    "description": resolve_description(manifest),
+                    "description": metadata.get("description")
+                    or resolve_description(manifest),
                     "image_path_url": resolve_icon(manifest, dest_path, file_id),
+                    "tags": [str(tag) for tag in metadata.get("tags", [])],
+                    "origin": metadata.get("origin") or "local",
                     "versions": [],
                 },
             )

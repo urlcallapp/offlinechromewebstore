@@ -60,10 +60,30 @@ class ChromeExtensionSync:
         with open(path, "r") as handle:
             return json.load(handle)
 
+    @staticmethod
+    def _parse_entry(ext):
+        """Normalize a source entry to {"id", "name"?, "tags", "origin"}.
+
+        Accepted shapes, oldest to richest: a plain ID string, {"id", "name"},
+        and {"id", "name"?, "description"?, "tags"?, "origin"?}. Tags are
+        display taxonomy assigned when the extension is added to the store
+        sources; origin is "webstore" (mirrored from the Chrome Web Store,
+        the default) or "in-house" (first-party CRX placed in the artifacts
+        tree directly - sync does not try to download it).
+        """
+        if not isinstance(ext, dict):
+            return {"id": ext, "tags": [], "origin": "webstore"}
+        tags = ext.get("tags")
+        return {
+            **ext,
+            "tags": [str(tag) for tag in tags] if isinstance(tags, list) else [],
+            "origin": ext.get("origin") or "webstore",
+        }
+
     def load_extensions(self):
         """Recommended extensions merged with manually specified ones.
 
-        Manually specified entries win on ID conflicts so a custom name can
+        Manually specified entries win on ID conflicts so a custom entry can
         override the recommended one. The blocklist applies after the merge,
         so a manual entry can never resurrect a blocked ID.
         """
@@ -71,7 +91,37 @@ class ChromeExtensionSync:
         for ext in self.load_recommended_extensions() + self.load_specified_extensions():
             ext_id = ext["id"] if isinstance(ext, dict) else ext
             merged[ext_id] = ext
-        return list(merged.values())
+        return [self._parse_entry(ext) for ext in merged.values()]
+
+    def _write_extension_metadata(self, mirrored_ids, in_house_ids):
+        """Write display metadata for cwsbuild, scoped to known extensions.
+
+        Only IDs that were actually mirrored or declared in-house appear, so
+        metadata can never surface a blocked or removed extension downstream.
+        """
+        known = set(mirrored_ids) | set(in_house_ids)
+        resolved = {}
+        for ext in self.load_extensions():
+            ext_id = ext["id"]
+            if ext_id not in known:
+                continue
+            metadata = {"origin": ext["origin"]}
+            if ext["tags"]:
+                metadata["tags"] = ext["tags"]
+            if ext.get("description"):
+                metadata["description"] = ext["description"]
+            resolved[ext_id] = metadata
+        path = os.environ.get(
+            "CWS_EXTENSION_METADATA_FILE",
+            os.path.join(os.environ.get("CWS_ARTIFACTS_DIR", config.ARTIFACTS_DIR),
+                         "extension_metadata.json"),
+        )
+        try:
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            with open(path, "w") as handle:
+                json.dump(resolved, handle, indent=4)
+        except OSError as exc:
+            logger.warning("Could not write extension metadata %s: %s", path, exc)
 
     def sync_extensions(self, force=False):
         """Mirror every extension, skipping blocked ones and scan outages.
@@ -89,10 +139,21 @@ class ChromeExtensionSync:
         failures = 0
         blocked = 0
         scan_errors = 0
+        mirrored_ids = []
+        in_house_ids = []
 
         for ext in extensions:
-            extension_id = ext["id"] if isinstance(ext, dict) else ext
-            configured_name = ext.get("name") if isinstance(ext, dict) else None
+            extension_id = ext["id"]
+            configured_name = ext.get("name")
+
+            if ext["origin"] == "in-house":
+                # First-party extension: its CRX is placed in the artifacts
+                # tree directly, there is nothing to download from the store.
+                in_house_ids.append(extension_id)
+                report["extensions"].append(
+                    {"id": extension_id, "status": "in_house"}
+                )
+                continue
 
             status = self.checker.check(extension_id)
             if status not in DOWNLOADABLE:
@@ -124,6 +185,7 @@ class ChromeExtensionSync:
                     {"id": extension_id, "status": "download_error"}
                 )
             else:
+                mirrored_ids.append(extension_id)
                 report["extensions"].append(
                     {
                         "id": extension_id,
@@ -137,11 +199,13 @@ class ChromeExtensionSync:
         problems = failures + scan_errors
         report["summary"] = {
             "total": len(extensions),
-            "mirrored": len(extensions) - blocked - scan_errors - failures,
+            "mirrored": len(mirrored_ids),
+            "in_house": len(in_house_ids),
             "blocked": blocked,
             "scan_errors": scan_errors,
             "failures": failures,
         }
+        self._write_extension_metadata(mirrored_ids, in_house_ids)
         self._write_report(report)
         logger.info(
             "Sync completed at %s (%d extensions, %d blocked, %d scan errors, "
