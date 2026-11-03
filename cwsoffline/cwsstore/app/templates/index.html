@@ -8,7 +8,7 @@
 <div class="extensions-grid" id="extensionsGrid">
     {% for extension in extensions %}
     <article class="extension-card" data-name="{{ extension.name.lower() }}" data-description="{{ extension.description.lower() }}" data-id="{{ extension.extension_id }}">
-        <a class="card-main" href="/extension/{{ extension.extension_id }}">
+        <a class="card-main" href="/classic/extension/{{ extension.extension_id }}">
             <img class="extension-icon" src="/{{ extension.image_path_url }}" alt="" loading="lazy" width="48" height="48">
             <div class="card-text">
                 <div class="card-title-row">

@@ -14,10 +14,14 @@ This project is an offline version of the Chrome Web Store, allowing users to br
 The store ships two frontends, both served by the same FastAPI app with no
 network access needed at runtime:
 
-- `/` - server-rendered pages (Jinja templates). Works with JavaScript
-  disabled; the default.
-- `/app/` - a React single-page storefront with live search and tag
-  filtering. Source lives in `frontend/` (Vite + React).
+- `/` - the React single-page storefront with live search and tag/origin
+  filtering; the default. Source lives in `frontend/` (Vite + React).
+  Also reachable at `/app/`.
+- `/classic` - server-rendered pages (Jinja templates). Works with
+  JavaScript disabled. Extension detail pages live under
+  `/classic/extension/{id}`; legacy `/extension/{id}` links redirect
+  there (308). APIs and feeds (`/json`, `/crx`, `/download`, `/assets`,
+  `/artifacts`) are unchanged.
 
 The React bundle is prebuilt two ways: the compiled assets are committed
 under `app/static/app/` for bare `pip` installs, and the Docker image

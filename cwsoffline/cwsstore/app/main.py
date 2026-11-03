@@ -20,9 +20,10 @@ templates = Jinja2Templates(directory="app/templates")
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
-# The React storefront (built assets are committed under app/static/app, so
-# no npm step is needed at image build or run time). The server-rendered
-# pages stay available at / and /extension/{id} and as the no-JS fallback.
+# The React storefront is the default at / (built assets are committed under
+# app/static/app, so no npm step is needed at image build or run time) and
+# stays reachable at /app/. The server-rendered pages are the classic
+# storefront at /classic and /classic/extension/{id} - the no-JS fallback.
 app.mount(
     "/app",
     StaticFiles(directory="app/static/app", html=True, check_dir=False),
@@ -70,9 +71,18 @@ def load_extensions():
         return filter_extensions(json.load(handle))
 
 
+SPA_INDEX = os.path.join("app", "static", "app", "index.html")
+
+
 @app.get("/", response_class=HTMLResponse, name="read_root")
-async def read_root(request: Request):
-    """Render the homepage with the mirrored extensions."""
+async def read_root():
+    """Serve the React storefront (the default)."""
+    return FileResponse(SPA_INDEX)
+
+
+@app.get("/classic", response_class=HTMLResponse, name="classic_storefront")
+async def classic_storefront(request: Request):
+    """Render the server-rendered homepage with the mirrored extensions."""
     return templates.TemplateResponse(
         request,
         "index.html",

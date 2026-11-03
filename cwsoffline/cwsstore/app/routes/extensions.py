@@ -9,6 +9,7 @@ from fastapi.responses import (
     FileResponse,
     HTMLResponse,
     JSONResponse,
+    RedirectResponse,
     Response,
 )
 from fastapi.templating import Jinja2Templates
@@ -111,7 +112,15 @@ async def serve_update_feed(request: Request):
     return Response(content=xml_content, media_type="application/xml")
 
 
-@router.get("/extension/{extension_id}", response_class=HTMLResponse)
+@router.get("/extension/{extension_id}")
+async def extension_page_redirect(extension_id: str):
+    """Legacy detail URL: the classic storefront now lives under /classic."""
+    return RedirectResponse(
+        url=f"/classic/extension/{extension_id}", status_code=308
+    )
+
+
+@router.get("/classic/extension/{extension_id}", response_class=HTMLResponse)
 async def extension_page(request: Request, extension_id: str):
     """Render the details page of a specific extension."""
     extensions = load_extensions()

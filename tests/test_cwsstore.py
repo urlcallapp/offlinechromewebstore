@@ -12,7 +12,7 @@ UPDATECHECK_REQUEST = f"""<?xml version="1.0" encoding="UTF-8"?>
 
 
 def test_homepage_lists_extensions(store_client, built_index):
-    response = store_client.get("/")
+    response = store_client.get("/classic")
     assert response.status_code == 200
     assert "Tampermonkey" in response.text
     assert "Google Translate" in response.text
