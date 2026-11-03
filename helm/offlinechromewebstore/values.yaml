@@ -78,3 +78,15 @@ networkPolicy:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# Opt-in OpenShift restricted-SCC-compatible pod settings. SCC admission chooses
+# the UID, fsGroup and SELinux label; do not hard-code namespace-specific ranges.
+openshift:
+  enabled: false
+  route:
+    enabled: false
+    # Empty lets the OpenShift router assign a host under its ingress domain.
+    host: ""
+    annotations: {}
+    # Backend serves HTTP only: edge TLS using the router's default certificate.
+    insecureEdgeTerminationPolicy: Redirect

@@ -1,0 +1,38 @@
+{{- if .Values.openshift.route.enabled }}
+{{- if not .Values.openshift.enabled }}
+{{- fail "openshift.route.enabled requires openshift.enabled=true" }}
+{{- end }}
+{{- if not .Values.cwsstore.enabled }}
+{{- fail "OpenShift Route requires cwsstore.enabled=true" }}
+{{- end }}
+{{- if .Values.cwsstore.ingress.enabled }}
+{{- fail "Choose either OpenShift Route or Kubernetes Ingress, not both" }}
+{{- end }}
+{{- if not (.Capabilities.APIVersions.Has "route.openshift.io/v1") }}
+{{- fail "OpenShift Route API route.openshift.io/v1 is unavailable; for offline rendering pass --api-versions route.openshift.io/v1" }}
+{{- end }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "ocws.fullname" . }}-cwsstore
+  labels:
+    {{- include "ocws.labels" . | nindent 4 }}
+  {{- with .Values.openshift.route.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.openshift.route.host }}
+  host: {{ . | quote }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ include "ocws.fullname" . }}-cwsstore
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: {{ .Values.openshift.route.insecureEdgeTerminationPolicy }}
+  wildcardPolicy: None
+{{- end }}

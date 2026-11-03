@@ -22,3 +22,14 @@ ExtensionSettings exports. Exports do not apply policies. See examples/policy/.
 Offline build/store egress denial requested. Requires an enforcing CNI; audit
 other matching NetworkPolicies because allowances are additive.
 {{- end }}
+
+{{- if .Values.openshift.enabled }}
+OpenShift restricted-security profile enabled. The namespace SCC must assign an
+allowed UID/fsGroup/SELinux label and the storage driver must allow builder/sync
+writes. No SCC or anyuid grants were created. Verify admission and PVC access.
+{{- if .Values.openshift.route.enabled }}
+Get the admitted Route host: oc get route {{ include "ocws.fullname" . }}-cwsstore
+Edge TLS uses the router default certificate. Verify certificate trust and
+Route admission before setting Chrome policy to https://<admitted-host>/crx.
+{{- end }}
+{{- end }}

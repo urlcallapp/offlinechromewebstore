@@ -1,0 +1,9 @@
+# Compose with values-airgapped.yaml for a disconnected installation.
+# No SCC/RBAC grants, fixed UID/GID/fsGroup, privileged init or root chown.
+openshift:
+  enabled: true
+  route:
+    enabled: true
+cwsstore:
+  ingress:
+    enabled: false
