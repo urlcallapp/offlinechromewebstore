@@ -25,6 +25,24 @@ FALLBACK_ICON_URL = "static/images/icon_144px_blank.png"
 ARTIFACTS_DIR = os.environ.get("CWS_ARTIFACTS_DIR", "artifacts")
 ASSETS_DIR = os.environ.get("CWS_ASSETS_DIR", "assets")
 
+MALICIOUS_LIST_FILE = os.environ.get(
+    "CWS_MALICIOUS_LIST_FILE", os.path.join(ARTIFACTS_DIR, "malicious_extensions.json")
+)
+
+
+def load_malicious_ids(path=None):
+    """IDs on the malicious extension list; empty set when no list exists."""
+    path = path or MALICIOUS_LIST_FILE
+    if not os.path.exists(path):
+        return set()
+    with open(path, "r") as handle:
+        data = json.load(handle)
+    return {
+        item["id"] if isinstance(item, dict) else item
+        for item in data
+        if item
+    }
+
 
 def is_valid_extension_id(value):
     return bool(EXTENSION_ID_PATTERN.match(value or ""))
@@ -106,6 +124,12 @@ def build_index(src_folder=None, dest_folder=None, artifacts_dir=None):
     artifacts_dir = artifacts_dir or ARTIFACTS_DIR
 
     extensions = {}
+    malicious_path = os.environ.get(
+        "CWS_MALICIOUS_LIST_FILE", os.path.join(artifacts_dir, "malicious_extensions.json")
+    )
+    malicious_ids = load_malicious_ids(malicious_path)
+    if malicious_ids:
+        logger.info("Excluding %d malicious extensions", len(malicious_ids))
 
     for root, _, files in os.walk(src_folder):
         for file in sorted(files):
@@ -115,6 +139,9 @@ def build_index(src_folder=None, dest_folder=None, artifacts_dir=None):
             file_id, file_name, file_version = parse_crx_filename(file)
             if not is_valid_extension_id(file_id):
                 logger.warning("Skipping file with unexpected name: %s", crx_path)
+                continue
+            if file_id in malicious_ids:
+                logger.info("Skipping malicious extension: %s", file_id)
                 continue
 
             dest_path = os.path.join(dest_folder, file_id)

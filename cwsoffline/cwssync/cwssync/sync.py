@@ -10,14 +10,16 @@ import schedule
 from . import config
 from .details import get_extension_details
 from .download import ChromeExtensionDownloader
+from .malicious import MaliciousChecker
 
 logger = logging.getLogger(__name__)
 
 
 class ChromeExtensionSync:
-    def __init__(self, extensions_file=None, downloader=None):
+    def __init__(self, extensions_file=None, downloader=None, checker=None):
         self.extensions_file = extensions_file or self._default_extensions_file()
         self.downloader = downloader or ChromeExtensionDownloader()
+        self.checker = checker or MaliciousChecker()
 
     @staticmethod
     def _default_extensions_file():
@@ -73,6 +75,8 @@ class ChromeExtensionSync:
         for ext in extensions:
             extension_id = ext["id"] if isinstance(ext, dict) else ext
             configured_name = ext.get("name") if isinstance(ext, dict) else None
+            if self.checker.is_malicious(extension_id):
+                continue
             try:
                 details = get_extension_details(extension_id, name=configured_name)
             except Exception as exc:
@@ -84,6 +88,7 @@ class ChromeExtensionSync:
             ) is None:
                 failures += 1
 
+        self.checker.malicious_list.save()
         logger.info(
             "Sync completed at %s (%d extensions, %d failures)",
             datetime.now(),
