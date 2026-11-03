@@ -32,7 +32,8 @@ CRXs placed in the artifacts tree directly, which sync does
 not download) and a `description` override. Plain ID strings and
 `{id, name}` entries keep working. cwssync resolves this into
 `artifacts/extension_metadata.json`, cwsbuild merges it into the index,
-and the storefronts read it from `/json`.
+and the storefronts read it from `/json`: tag and origin filters in the
+React app, badges on the server-rendered pages.
 
 `origin` records where a CRX came from, nothing more: it is not a trust
 verdict, and the malicious blocklist applies to in-house entries too. A
