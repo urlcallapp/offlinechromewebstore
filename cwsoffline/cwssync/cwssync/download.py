@@ -33,6 +33,18 @@ class ChromeExtensionDownloader:
         filename = f"{extension_id}_{slugify_name(name)}_{version}.crx"
         return os.path.join(directory, filename)
 
+    def _effective_prodversion(self):
+        """Resolve the Chrome prodversion once; the update service answers
+        204 No Content when the parameter is missing entirely."""
+        if not self.prodversion:
+            from .chrome_version import get_latest_chrome_version
+
+            self.prodversion = (
+                get_latest_chrome_version(timeout=self.timeout)
+                or config.FALLBACK_CHROME_PROD_VERSION
+            )
+        return self.prodversion
+
     def download(self, extension_id, name, version, force=False):
         """Download one extension version. Returns the file path, or None on failure.
 
@@ -47,7 +59,7 @@ class ChromeExtensionDownloader:
             "response": "redirect",
             "nacl_arch": "x86-64",
             "acceptformat": "crx2,crx3",
-            "prodversion": self.prodversion,
+            "prodversion": self._effective_prodversion(),
             "x": f"id={extension_id}&installsource=ondemand&uc",
         }
         try:

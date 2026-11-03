@@ -10,12 +10,43 @@ from . import config
 
 logger = logging.getLogger(__name__)
 
-ExtensionDetails = namedtuple("ExtensionDetails", ["name", "version", "extension_id"])
+ExtensionDetails = namedtuple(
+    "ExtensionDetails",
+    ["name", "version", "extension_id", "codebase", "size", "hash_sha256"],
+    defaults=[None, None, None],
+)
 
 
 def _localname(tag):
     """Strip an XML namespace from a tag name."""
     return tag.rsplit("}", 1)[-1]
+
+
+def parse_updatecheck_response(content):
+    """Parse an update2 updatecheck response.
+
+    Returns (version, codebase, size, hash_sha256). The live service puts
+    these as attributes on <updatecheck>; a child <manifest> element is
+    accepted as a fallback. Raises ValueError on noupdate/error statuses.
+    """
+    root = ET.fromstring(content)
+    version = codebase = None
+    size = hash_sha256 = None
+    for element in root.iter():
+        name = _localname(element.tag)
+        if name == "updatecheck":
+            status = element.attrib.get("status", "")
+            if status and status != "ok":
+                raise ValueError(f"Update service returned status {status!r}")
+            version = element.attrib.get("version", version)
+            codebase = element.attrib.get("codebase", codebase)
+            size = element.attrib.get("size", size)
+            hash_sha256 = element.attrib.get("hash_sha256", hash_sha256)
+        elif name == "manifest":
+            version = element.attrib.get("version", version)
+    if not version:
+        raise ValueError("No version information in the update response")
+    return version, codebase, size, hash_sha256
 
 
 def get_extension_version(extension_id, prodversion, timeout=None):
@@ -29,6 +60,9 @@ def get_extension_version(extension_id, prodversion, timeout=None):
     params = {
         "response": "updatecheck",
         "prodversion": prodversion,
+        # Without acceptformat the service answers "noupdate" even when a
+        # newer CRX exists (verified against the live service).
+        "acceptformat": "crx2,crx3",
         "x": f"id={extension_id}&uc",
     }
     response = requests.get(
@@ -38,20 +72,11 @@ def get_extension_version(extension_id, prodversion, timeout=None):
         timeout=timeout,
     )
     response.raise_for_status()
-    root = ET.fromstring(response.content)
-
-    for element in root.iter():
-        if _localname(element.tag) == "updatecheck":
-            status = element.attrib.get("status", "")
-            if status and status != "ok":
-                raise ValueError(
-                    f"Update service returned status {status!r} for {extension_id}"
-                )
-        if _localname(element.tag) == "manifest":
-            version = element.attrib.get("version")
-            if version:
-                return version
-    raise ValueError(f"No version information returned for {extension_id}")
+    try:
+        version, _, _, _ = parse_updatecheck_response(response.content)
+    except ValueError as exc:
+        raise ValueError(f"{exc} (extension {extension_id})")
+    return version
 
 
 def get_extension_name(extension_id, timeout=None):
@@ -91,6 +116,31 @@ def get_extension_details(extension_id, name=None, prodversion=None, timeout=Non
             get_latest_chrome_version(timeout=timeout or config.REQUEST_TIMEOUT)
             or config.FALLBACK_CHROME_PROD_VERSION
         )
-    version = get_extension_version(extension_id, prodversion, timeout=timeout)
+    version, codebase, size, hash_sha256 = _get_version_and_metadata(
+        extension_id, prodversion, timeout=timeout
+    )
     resolved_name = name or get_extension_name(extension_id, timeout=timeout) or extension_id
-    return ExtensionDetails(resolved_name, version, extension_id)
+    return ExtensionDetails(
+        resolved_name, version, extension_id, codebase, size, hash_sha256
+    )
+
+
+def _get_version_and_metadata(extension_id, prodversion, timeout=None):
+    timeout = timeout or config.REQUEST_TIMEOUT
+    params = {
+        "response": "updatecheck",
+        "prodversion": prodversion,
+        "acceptformat": "crx2,crx3",
+        "x": f"id={extension_id}&uc",
+    }
+    response = requests.get(
+        config.CHROME_STORE_URL,
+        params=params,
+        headers={"User-Agent": config.USER_AGENT},
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    try:
+        return parse_updatecheck_response(response.content)
+    except ValueError as exc:
+        raise ValueError(f"{exc} (extension {extension_id})")
