@@ -537,3 +537,76 @@ def test_stale_authorization_cap_ends_session(gateway):
     with patch('auth_gateway.main.recheck_admin', side_effect=RuntimeError('directory down')):
         assert client.get('/auth/session').status_code == 401
     assert not any(data.get('subject') for _, data in app.state.sessions.values())
+
+
+def _admin_client(app, upstream_url, path, conf):
+    import time as _time
+    conf = dict(conf, upstream=upstream_url)
+    path.write_text(json.dumps(conf))
+    from auth_gateway.main import create_app
+    from fastapi.testclient import TestClient
+    app = create_app()
+    app.state.sessions['test-admin-sid'] = (_time.time() + 900, {
+        'subject': 'ci-admin', 'admin': True, 'csrf': 'x', 'iat': _time.time(),
+        'lr': _time.time(), 'verified_at': _time.time(), 'method': 'test'})
+    client = TestClient(app, base_url='https://store.test')
+    client.cookies.set('__Host-cws-session', 'test-admin-sid')
+    return client
+
+
+def test_proxy_streams_large_upload_beyond_default_cap(gateway):
+    """The intake upload route streams past the 128 KiB admin-API cap."""
+    import socket, threading, uvicorn
+    from fastapi import FastAPI, Request
+    upstream = FastAPI()
+
+    @upstream.post('/api/admin/intake/upload')
+    async def sink(request: Request):
+        size = 0
+        async for chunk in request.stream():
+            size += len(chunk)
+        return {'size': size}
+
+    with socket.socket() as sock:
+        sock.bind(('127.0.0.1', 0))
+        port = sock.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(upstream, host='127.0.0.1', port=port, log_level='error'))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    for _ in range(100):
+        if server.started:
+            break
+        __import__("time").sleep(.01)
+    assert server.started
+    _, app, conf, path = gateway
+    client = _admin_client(app, f'http://127.0.0.1:{port}', path, conf)
+    try:
+        payload = b'x' * (512 * 1024)  # 4x the old buffering cap
+        response = client.post('/api/admin/intake/upload', content=payload,
+                               headers={'Content-Type': 'application/octet-stream',
+                                        'Origin': 'https://store.test'})
+        assert response.status_code == 200
+        assert response.json() == {'size': len(payload)}
+        # Small non-upload bodies keep the 128 KiB cap at the gateway.
+        big = client.post('/api/admin/policy/export', content=b' ' * (129 * 1024),
+                          headers={'Origin': 'https://store.test'})
+        assert big.status_code == 413
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)
+
+
+@pytest.mark.parametrize('method,path', [('POST', '/api/admin/intake/upload'),
+    ('DELETE', '/api/admin/intake/' + 'a'*32 + '/1.0')])
+def test_intake_gateway_rejects_cross_origin_mutation(gateway, method, path):
+    _, app, cfg, config_path = gateway
+    client = _admin_client(app, cfg['upstream'], config_path, cfg)
+    for headers in ({}, {'Origin': 'https://evil.test'}):
+        assert client.request(method, path, headers=headers).status_code == 403
+
+
+def test_intake_gateway_anonymous_denied(gateway):
+    client, _, _, _ = gateway
+    for method, path in [('GET', '/api/admin/intake'), ('POST', '/api/admin/intake/upload'),
+                         ('DELETE', '/api/admin/intake/' + 'a'*32 + '/1.0')]:
+        assert client.request(method, path).status_code == 401

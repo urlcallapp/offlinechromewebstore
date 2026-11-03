@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 INTAKE_DIR = os.environ.get("CWS_INTAKE_DIR", "")
 MAX_UPLOAD = min(int(os.environ.get("CWS_INTAKE_MAX_BYTES", str(200 * 1024 * 1024))), 512 * 1024 * 1024)
+if MAX_UPLOAD <= 0:
+    raise ValueError("CWS_INTAKE_MAX_BYTES must be positive")
 MAX_CRX_HEADER_SIZE = 1024 * 1024
 MAX_MANIFEST_SIZE = 1024 * 1024
 ID = re.compile(r"[a-p]{32}\Z")
@@ -144,7 +146,7 @@ def read_manifest(zip_bytes):
     if not isinstance(manifest, dict):
         raise InvalidPackage("manifest.json must be an object")
     version = manifest.get("version")
-    if not isinstance(version, str) or not VERSION.fullmatch(version):
+    if not isinstance(version, str) or not VERSION.fullmatch(version) or any(int(n) > 65535 for n in version.split(".")):
         raise InvalidPackage("manifest version must be 1-4 dot-separated integers (0-65535)")
     name = manifest.get("name")
     if not isinstance(name, str) or not name.strip() or len(name) > 256 or "\x00" in name:

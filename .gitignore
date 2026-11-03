@@ -179,3 +179,4 @@ assets/
 !cwsoffline/cwsstore/app/static/app/assets/*
 
 node_modules/
+intake/

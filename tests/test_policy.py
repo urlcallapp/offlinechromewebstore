@@ -160,7 +160,7 @@ def _assets(tmp_path, schema=SCHEMA):
     extension_dir.mkdir(parents=True, exist_ok=True)
     manifest = {"name": "Internal tool", "version": "1.0"}
     if schema is not None:
-        manifest["storage.managed_schema"] = "schema.json"
+        manifest["storage"] = {"managed_schema": "schema.json"}
         (extension_dir / "schema.json").write_text(_json.dumps(schema))
     (extension_dir / "manifest.json").write_text(_json.dumps(manifest))
     return str(tmp_path / "assets")
@@ -213,10 +213,10 @@ def test_managed_policy_undeclared_key_rejected_when_closed(tmp_path):
     assets = _assets(tmp_path, schema=schema)
     with pytest.raises(ValueError, match="not declared"):
         policy.generate_policy(_spec({EXT_ID: {"Server": "x", "Surprise": 1}}), _catalog(), [], assets_dir=assets)
-    # Open schema (default) tolerates extra keys, matching JSON Schema semantics.
+    # Chrome policy names must be declared even without additionalProperties.
     assets = _assets(tmp_path)
-    result = policy.generate_policy(_spec({EXT_ID: {"Server": "x", "Surprise": 1}}), _catalog(), [], assets_dir=assets)
-    assert result["extension_managed_policies"][EXT_ID]["Surprise"] == 1
+    with pytest.raises(ValueError, match="not declared"):
+        policy.generate_policy(_spec({EXT_ID: {"Server": "x", "Surprise": 1}}), _catalog(), [], assets_dir=assets)
 
 
 def test_managed_policy_unenforced_keywords_warn(tmp_path):
@@ -237,3 +237,27 @@ def test_managed_policy_requires_assets_and_clean_extension(tmp_path):
     missing_spec["extensions"] = {EXT_ID: "blocked"}
     with pytest.raises(ValueError, match="not in the local catalog"):
         policy.generate_policy(missing_spec, [], [], assets_dir=assets)
+
+
+def test_admin_javascript_syntax_and_scoped_selectors():
+    import shutil
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('Node is checked by the CI frontend job')
+    html = (Path(CWSSTORE_DIR) / 'app/templates/admin.html').read_text()
+    js = html.split('<script>', 1)[1].split('</script>', 1)[0]
+    subprocess.run([node, '--check'], input=js, text=True, check=True, capture_output=True)
+    assert "select[data-id]" in js
+    assert 'for(const format of Object.keys(downloads))' in js
+
+
+def test_managed_schema_uses_actual_nested_manifest_key(tmp_path):
+    assets = _assets(tmp_path)
+    manifest_path = Path(assets) / EXT_ID / 'manifest.json'
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest['storage']['managed_schema'] == 'schema.json'
+    manifest.pop('storage')
+    manifest['storage.managed_schema'] = 'schema.json'  # wrong flat spelling
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match='declares no'):
+        policy.generate_policy(_spec({EXT_ID: {'Server': 'x'}}), _catalog(), [], assets_dir=assets)

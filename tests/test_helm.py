@@ -26,10 +26,15 @@ def test_default_and_airgapped():
     assert 'egress: []' in result.stdout
     assert 'values: [cwsbuild, cwsstore]' in result.stdout
     assert result.stdout.count('imagePullPolicy: Never') == 2
-    assert result.stdout.count('readOnly: true') == 3
+    assert result.stdout.count('readOnly: true') == 2
     assert 'claimName: test-offlinechromewebstore-intake' in result.stdout
+    # Intake is writable on both: the store stages uploads, cwsbuild removes
+    # consumed files. Artifacts/assets stay read-only on the store.
     assert 'mountPath: /store/intake' in result.stdout
     assert 'mountPath: /app/intake' in result.stdout
+    for mount in ('/store/intake', '/app/intake'):
+        block = result.stdout.split('mountPath: ' + mount, 1)[1][:60]
+        assert 'readOnly' not in block, mount + ' must be writable'
 
 
 def test_private_registry_secrets_and_tls():
@@ -72,7 +77,7 @@ def test_openshift_restricted_profile_and_route():
                       'kind: SecurityContextConstraints', 'kind: ClusterRoleBinding',
                       'privileged: true', 'initContainers:', 'kind: Ingress', 'host:']:
         assert forbidden not in text
-    assert text.count('readOnly: true') == 3
+    assert text.count('readOnly: true') == 2
 
 
 def test_openshift_disconnected_composition():
@@ -156,3 +161,17 @@ def test_openshift_auth_profile():
     assert result.stdout.count('readOnlyRootFilesystem: true')==4
     assert 'name: test-offlinechromewebstore-cwsauth' in result.stdout
     assert 'termination: edge' in result.stdout
+
+
+def test_compose_intake_is_on_builder_not_sync():
+    import yaml
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    for filename in ('docker-compose.yaml', 'docker-compose-ag.yaml'):
+        services = yaml.safe_load((root / filename).read_text())['services']
+        assert './intake:/app/intake' in services['cwsbuild']['volumes']
+        assert './intake:/store/intake' in services['cwsstore']['volumes']
+        assert './artifacts:/store/artifacts:ro' in services['cwsstore']['volumes']
+        assert './assets:/store/assets:ro' in services['cwsstore']['volumes']
+        if 'cwssync' in services:
+            assert not any('intake' in v for v in services['cwssync']['volumes'])

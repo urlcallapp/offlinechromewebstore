@@ -61,12 +61,12 @@ def _windows_registry_file(sections):
     lines = ["Windows Registry Editor Version 5.00"]
     for key, values in sections:
         lines.append("")
-        lines.append("[" + key + "]")
+        lines.append("[" + key.replace("HKLM\\", "HKEY_LOCAL_MACHINE\\", 1) + "]")
         for name, kind, data in values:
             if kind == "dword":
-                lines.append(f'"{name}"=dword:{data:08x}')
+                lines.append(f'"{_reg_escape(name)}"=dword:{data:08x}')
             else:
-                lines.append(f'"{name}"="' + _reg_escape(str(data)) + '"')
+                lines.append(f'"{_reg_escape(name)}"="' + _reg_escape(str(data)) + '"')
     return "\r\n".join(lines) + "\r\n"
 
 
@@ -82,7 +82,7 @@ def _gpo_powershell_script(sections):
              "if ($GpoName -eq 'SET-TO-YOUR-EXISTING-GPO-NAME') { throw 'Set $GpoName to your existing GPO first' }"]
     for key, values in sections:
         for name, kind, data in values:
-            lines.append("Set-GPRegistryValue -Name $GpoName -Key " + _ps_quote(key) +
+            lines.append("Set-GPRegistryValue -Name $GpoName -Key " + _ps_quote(key.replace("HKEY_LOCAL_MACHINE\\", "HKLM\\", 1)) +
                          " -ValueName " + _ps_quote(name) +
                          (" -Type DWord -Value " + str(data) if kind == "dword"
                           else " -Type String -Value " + _ps_quote(str(data))))

@@ -40,11 +40,16 @@ jobs:
         run: |
           set -euo pipefail
           id=dhdgffkkebhmkfjojejmpbldmpobfkfo
-          mkdir -p "artifacts/extensions/$id/5.3.3" assets
+          tid=aapbdbdomjkkjkaonfhkkikfgjllcleb
+          mkdir -p "artifacts/extensions/$id/5.3.3" assets intake /tmp/ci-secret
+          printf 'ci-only-gateway-secret-ci-only-gateway-secret' > /tmp/ci-secret/gateway-secret
           cp "tests/fixtures/$id.crx" "artifacts/extensions/$id/5.3.3/${id}_Tampermonkey_5.3.3.crx"
           docker compose run --rm --no-deps cwsbuild
-          docker compose up --no-deps -d cwsstore
-          trap 'docker compose logs; docker compose down' EXIT
+          docker compose run -d --name cwsstore-ci --service-ports --no-deps \
+            -e CWS_ADMIN_GATEWAY_SECRET_FILE=/auth-secret/gateway-secret \
+            -v /tmp/ci-secret:/auth-secret:ro \
+            cwsstore
+          trap 'docker rm -f cwsstore-ci || true; docker compose logs || true; docker compose down || true' EXIT
           curl --fail --retry 15 --retry-delay 2 --retry-all-errors http://localhost:8005/json
           curl --fail http://localhost:8005/ | grep '/app/assets/'
           curl --fail http://localhost:8005/classic | grep Tampermonkey
@@ -53,6 +58,48 @@ jobs:
           cmp /tmp/download.crx "tests/fixtures/$id.crx"
           test "$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:8005/static/extensions/$id.crx")" = 404
           docker compose run --rm --no-deps cwssync python extension_sync.py --help
+          # First-party upload intake, end to end: stage via the admin API with a
+          # real gateway, consume in cwsbuild, download byte-identical.
+          mkdir -p /tmp/intake-auth
+          printf '%s' '{"origin":"https://store.test","upstream":"http://cwsstore-ci:8005","access":"anonymous","oidc":{"issuer":"https://idp.test","client_id":"ci","admin_groups":["admins"]}}' > /tmp/intake-auth/config.json
+          printf 'ci-only-unused' > /tmp/ci-secret/oidc-client-secret
+          network=$(docker inspect cwsstore-ci --format '{{range $key, $value := .NetworkSettings.Networks}}{{$key}}{{end}}')
+          docker run -d --name intake-gateway-ci --network "$network" \
+            --entrypoint uvicorn -p 127.0.0.1:8006:8006 \
+            -v "$PWD/tests/container_gateway.py:/store/container_gateway.py:ro" \
+            -v /tmp/intake-auth:/auth-config:ro -v /tmp/ci-secret:/auth-secret:ro \
+            -e CWS_AUTH_CONFIG_FILE=/auth-config/config.json \
+            -e CWS_ADMIN_GATEWAY_SECRET_FILE=/auth-secret/gateway-secret \
+            -e CWS_OIDC_CLIENT_SECRET_FILE=/auth-secret/oidc-client-secret \
+            cwsstore container_gateway:app --host 0.0.0.0 --port 8006 --no-access-log
+          trap 'docker logs intake-gateway-ci || true; docker logs cwsstore-ci || true; docker rm -f intake-gateway-ci cwsstore-ci || true; docker compose down || true' EXIT
+          curl --fail --retry 15 --retry-delay 2 --retry-all-errors http://localhost:8006/auth/health
+          # Anonymous requests and cross-origin authenticated mutations fail.
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8006/api/admin/intake)" = 401
+          test "$(curl -s -X DELETE -b '__Host-cws-session=ci-admin-session' -H 'Origin: https://evil.test' -o /dev/null -w '%{http_code}' http://localhost:8006/api/admin/intake/$tid/2.0.16)" = 403
+          curl --fail -X POST \
+            -b '__Host-cws-session=ci-admin-session' -H 'Origin: https://store.test' \
+            -H 'Content-Type: application/octet-stream' \
+            --data-binary @"tests/fixtures/$tid.crx" \
+            http://localhost:8006/api/admin/intake/upload | grep "$tid"
+          test -n "$(find intake -name '*.crx' -print -quit)"
+          curl --fail -b '__Host-cws-session=ci-admin-session' \
+            http://localhost:8006/api/admin/intake | grep "$tid"
+          docker compose run --rm --no-deps cwsbuild
+          test -z "$(find intake -name '*.crx' -print -quit)"
+          curl --fail "http://localhost:8005/download/$tid" -o /tmp/upload-download.crx
+          cmp /tmp/upload-download.crx "tests/fixtures/$tid.crx"
+          # Upload, then delete the staged file before any build consumes it.
+          curl --fail -X POST \
+            -b '__Host-cws-session=ci-admin-session' -H 'Origin: https://store.test' \
+            -H 'Content-Type: application/octet-stream' \
+            --data-binary @"tests/fixtures/$tid.crx" \
+            http://localhost:8006/api/admin/intake/upload | grep "$tid"
+          curl --fail -X DELETE \
+            -b '__Host-cws-session=ci-admin-session' -H 'Origin: https://store.test' \
+            "http://localhost:8006/api/admin/intake/$tid/2.0.16"
+          test -z "$(find intake -name '*.crx' -print -quit)"
+          docker rm -f intake-gateway-ci cwsstore-ci
       - name: Exercise the auth gateway command inside the built image
         shell: bash
         run: |

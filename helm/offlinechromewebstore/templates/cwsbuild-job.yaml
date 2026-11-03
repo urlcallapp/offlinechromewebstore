@@ -62,9 +62,9 @@ spec:
               mountPath: /app/artifacts
             - name: assets
               mountPath: /app/assets
+            # Writable: cwsbuild removes staged files after consuming them.
             - name: intake
               mountPath: /app/intake
-              readOnly: true
           {{- with .Values.cwsbuild.resources }}
           resources:
             {{- toYaml . | nindent 12 }}

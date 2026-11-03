@@ -10,6 +10,7 @@ refresh token. One worker/replica: multi-replica requires a shared session and
 refresh-coordination store, which is deliberately not client-side tokens.
 """
 from collections import OrderedDict
+import os
 import asyncio
 import html
 import secrets
@@ -29,6 +30,11 @@ from auth_gateway.ldap_auth import authenticate, recheck_admin
 
 MAX_SESSIONS = 2000
 COOKIE = '__Host-cws-session'
+# Deployment-tunable gateway-side cap for first-party CRX uploads, mirroring
+# the store's CWS_INTAKE_MAX_BYTES default. The store enforces its own cap too.
+UPLOAD_MAX = min(int(os.environ.get('CWS_AUTH_UPLOAD_MAX_BYTES', str(200 * 1024 * 1024))), 512 * 1024 * 1024)
+if UPLOAD_MAX <= 0:
+    raise ValueError("CWS_AUTH_UPLOAD_MAX_BYTES must be positive")
 HOP = {'host', 'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
        'te', 'trailer', 'transfer-encoding', 'upgrade', 'content-length', 'cookie',
        'authorization', 'forwarded', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto'}
@@ -326,11 +332,25 @@ def create_app():
         if request.method not in {'GET', 'HEAD'}:
             if not (request.url.path in {'/crx', '/crx/'} and request.method == 'POST') and (not admin or request.headers.get('origin') != cfg['origin']):
                 return Response(status_code=403)
-        body = bytearray()
-        async for chunk in request.stream():
-            body.extend(chunk)
-            if len(body) > 128 * 1024:
-                return Response(status_code=413)
+        # Bodies stream to the upstream; caps guard memory, not bytes on the wire.
+        # The first-party CRX upload route gets the deployment-tunable upload cap;
+        # everything else keeps the small admin-API cap.
+        upload = request.method == 'POST' and request.url.path == '/api/admin/intake/upload'
+        limit = UPLOAD_MAX if upload else 128 * 1024
+
+        class BodyTooLarge(Exception):
+            pass
+
+        sent = 0
+
+        async def body_chunks():
+            nonlocal sent
+            async for chunk in request.stream():
+                sent += len(chunk)
+                if sent > limit:
+                    raise BodyTooLarge()
+                yield chunk
+
         headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP and not k.lower().startswith('x-')}
         headers['X-CWS-Admin-Assertion'] = assertion(key, request.method, request.url.path)
         from urllib.parse import urlsplit
@@ -342,7 +362,10 @@ def create_app():
         if request.url.query:
             url += '?' + request.url.query
         try:
-            upstream = await client.send(client.build_request(request.method, url, headers=headers, content=bytes(body)), stream=True)
+            upstream = await client.send(client.build_request(request.method, url, headers=headers, content=body_chunks()), stream=True)
+        except BodyTooLarge:
+            await client.aclose()
+            return Response(status_code=413)
         except Exception:
             await client.aclose()
             return Response(status_code=502)

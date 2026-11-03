@@ -6,7 +6,6 @@ services:
     image: cwssync
     volumes:
       - ./artifacts:/app/artifacts
-      - ./intake:/app/intake
     stdin_open: true
     tty: true
 
@@ -17,6 +16,7 @@ services:
     image: cwsbuild
     volumes:
       - ./artifacts:/app/artifacts
+      - ./intake:/app/intake
       - ./assets:/app/assets
     stdin_open: true
     tty: true
@@ -27,9 +27,9 @@ services:
       dockerfile: ./Dockerfile
     image: cwsstore
     volumes:
-      - ./artifacts:/store/artifacts
+      - ./artifacts:/store/artifacts:ro
       - ./intake:/store/intake
-      - ./assets:/store/assets
+      - ./assets:/store/assets:ro
     ports:
       - "8005:8005"
     stdin_open: true

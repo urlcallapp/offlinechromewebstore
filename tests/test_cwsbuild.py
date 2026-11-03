@@ -130,4 +130,16 @@ def test_consume_intake_moves_valid_and_keeps_invalid(tmp_path, caplog):
 
 def test_consume_intake_unset_is_noop(tmp_path):
     import cwsbuild
-    assert cwsbuild.consume_intake(None, str(tmp_path)) == 0 or cwsbuild.INTAKE_DIR == ""
+    assert cwsbuild.consume_intake("", str(tmp_path)) == 0
+
+
+def test_consume_intake_rechecks_current_blocklist(tmp_path):
+    import cwsbuild, json
+    from crx_helpers import crx3, key_id
+    from test_crx_identity import archive
+    intake = tmp_path / 'intake'; intake.mkdir()
+    staged = intake / 'internal.crx'; staged.write_bytes(crx3(archive()))
+    artifacts = tmp_path / 'artifacts'; artifacts.mkdir()
+    (artifacts / 'malicious_extensions.json').write_text(json.dumps([key_id()]))
+    assert cwsbuild.consume_intake(str(intake), str(artifacts)) == 0
+    assert staged.exists()
