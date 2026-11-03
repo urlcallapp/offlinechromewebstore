@@ -114,15 +114,21 @@ sudo rm -rf artifacts
 
 ---
 
-Possible Implements TODO List:
-* - [X] Add test cases.
-* - [X] ExtensionTotal get malicious extensions
-* - [X] crx expand and create json job for cwsstore
-* - [X] add helm (kubernetes) support
-* - [X] fix extension container properties alignments
-* - [X] list of manually specified extensions (artifacts/specified.json)
-* - [X] implements malicious extension list
-* - [X] check possibility to implement configure DNS in a air gapped env to https://clients2.google.com/service/update2/crx and https://chromewebstore.google.com when chrome uses HSTS - see [docs/airgapped-dns.md](docs/airgapped-dns.md) (research; live verification in a real air-gapped network still open)
+Possible Implements TODO List (status: implemented / verified):
+* - [X] Add test cases - implemented and verified (48 offline tests).
+* - [X] ExtensionTotal get malicious extensions - implemented; verified against the client contract in tests, NOT yet against the live ExtensionTotal API (needs an API key).
+* - [X] crx expand and create json job for cwsstore - pre-existing; re-verified by the cwsbuild tests.
+* - [X] add helm (kubernetes) support - implemented; validated with helm lint/template only, NOT yet deployed to a live cluster.
+* - [X] fix extension container properties alignments - implemented; verified with rendered desktop and mobile screenshots.
+* - [X] list of manually specified extensions (artifacts/specified.json) - implemented and verified by tests.
+* - [X] implements malicious extension list - implemented and verified by tests (sync skip, index exclusion, store-side serving refusal).
+* - [X] check possibility to implement configure DNS in a air gapped env to https://clients2.google.com/service/update2/crx and https://chromewebstore.google.com when chrome uses HSTS - research documented in [docs/airgapped-dns.md](docs/airgapped-dns.md); NOT yet verified against a live Chrome in an air-gapped network.
+
+Known open verification gaps: Docker image builds (no Docker available in the
+build environment used for this change), an end-to-end Chrome
+install/update cycle against a live cwsstore (see
+[docs/update-protocol.md](docs/update-protocol.md)), and the live
+ExtensionTotal API integration.
 
 ## Configuration
 
