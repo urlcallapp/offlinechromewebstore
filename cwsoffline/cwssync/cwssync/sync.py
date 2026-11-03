@@ -67,9 +67,11 @@ class ChromeExtensionSync:
         Accepted shapes, oldest to richest: a plain ID string, {"id", "name"},
         and {"id", "name"?, "description"?, "tags"?, "origin"?}. Tags are
         display taxonomy assigned when the extension is added to the store
-        sources; origin is "webstore" (mirrored from the Chrome Web Store,
-        the default) or "in-house" (first-party CRX placed in the artifacts
-        tree directly - sync does not try to download it).
+        sources; origin records provenance - "webstore" (mirrored from the
+        Chrome Web Store, the default) or "in-house" (CRX placed in the
+        artifacts tree directly - sync does not try to download it). Origin
+        is not a trust verdict: the malicious blocklist applies to in-house
+        entries too.
         """
         if not isinstance(ext, dict):
             return {"id": ext, "tags": [], "origin": "webstore"}
@@ -92,6 +94,24 @@ class ChromeExtensionSync:
             ext_id = ext["id"] if isinstance(ext, dict) else ext
             merged[ext_id] = ext
         return [self._parse_entry(ext) for ext in merged.values()]
+
+    @staticmethod
+    def _in_house_dir(extension_id):
+        return os.path.join(
+            os.environ.get("CWS_ARTIFACTS_DIR", config.ARTIFACTS_DIR),
+            "extensions",
+            extension_id,
+        )
+
+    def _in_house_crx_present(self, extension_id):
+        """True when the in-house CRX was actually dropped into the tree."""
+        directory = self._in_house_dir(extension_id)
+        if not os.path.isdir(directory):
+            return False
+        for _, _, files in os.walk(directory):
+            if any(name.endswith(".crx") for name in files):
+                return True
+        return False
 
     def _write_extension_metadata(self, mirrored_ids, in_house_ids):
         """Write display metadata for cwsbuild, scoped to known extensions.
@@ -147,8 +167,27 @@ class ChromeExtensionSync:
             configured_name = ext.get("name")
 
             if ext["origin"] == "in-house":
-                # First-party extension: its CRX is placed in the artifacts
-                # tree directly, there is nothing to download from the store.
+                # CRX placed in the artifacts tree directly; there is nothing
+                # to download from the store. The local blocklist still
+                # applies, and the CRX must actually be present - a declared
+                # in-house extension without a file must not look available.
+                if extension_id in self.checker.malicious_list:
+                    blocked += 1
+                    report["extensions"].append(
+                        {"id": extension_id, "status": ScanStatus.BLOCKED_LISTED.value}
+                    )
+                    continue
+                if not self._in_house_crx_present(extension_id):
+                    failures += 1
+                    logger.warning(
+                        "In-house extension %s has no CRX under %s",
+                        extension_id,
+                        self._in_house_dir(extension_id),
+                    )
+                    report["extensions"].append(
+                        {"id": extension_id, "status": "in_house_missing"}
+                    )
+                    continue
                 in_house_ids.append(extension_id)
                 report["extensions"].append(
                     {"id": extension_id, "status": "in_house"}
