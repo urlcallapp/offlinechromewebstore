@@ -1,0 +1,20 @@
+Offline Chrome Web Store installed.
+
+Components:
+{{- if .Values.cwssync.enabled }}
+  * cwssync mirrors extensions into the shared artifacts volume (continuous).
+{{- else }}
+  * cwssync is disabled: populate the artifacts PVC externally before the
+    cwsbuild hook runs, or re-run `helm upgrade` once artifacts exist.
+{{- end }}
+{{- if .Values.cwsbuild.enabled }}
+  * cwsbuild runs as a post-install/upgrade hook Job to build the catalog.
+{{- end }}
+{{- if .Values.cwsstore.enabled }}
+  * cwsstore serves the store and the Chrome update feed.
+    Port-forward:  kubectl port-forward svc/{{ include "ocws.fullname" . }}-cwsstore {{ .Values.cwsstore.service.port }}:{{ .Values.cwsstore.service.port }}
+    Update feed:   http://localhost:{{ .Values.cwsstore.service.port }}/crx
+{{- end }}
+
+Point Chrome policy ExtensionInstallSources / ExtensionInstallForcelist at the
+cwsstore address. See examples/policy/ in the repository.

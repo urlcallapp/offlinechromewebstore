@@ -1,0 +1,15 @@
+apiVersion: v2
+name: offlinechromewebstore
+description: |-
+  Offline Chrome Web Store: mirror Chrome extensions with cwssync, build the
+  catalog with cwsbuild and serve a private store + update feed with cwsstore.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - chrome
+  - extensions
+  - air-gapped
+  - offline
+sources:
+  - https://github.com/urlcallapp/offlinechromewebstore

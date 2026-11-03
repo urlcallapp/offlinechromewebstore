@@ -1,0 +1,59 @@
+{{- if .Values.cwssync.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ocws.fullname" . }}-cwssync
+  labels:
+    {{- include "ocws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cwssync
+spec:
+  replicas: 1
+  # Recreate: the artifacts PVC is often ReadWriteOnce.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "ocws.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: cwssync
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "ocws.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: cwssync
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: cwssync
+          image: {{ include "ocws.image" (dict "registry" $.Values.registry "repository" .Values.cwssync.image.repository "tag" .Values.cwssync.image.tag) }}
+          imagePullPolicy: {{ .Values.cwssync.image.pullPolicy }}
+          env:
+            - name: CWS_ARTIFACTS_DIR
+              value: /app/artifacts
+            {{- if .Values.cwssync.extensionTotal.existingSecret }}
+            - name: EXTENSIONTOTAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.cwssync.extensionTotal.existingSecret }}
+                  key: {{ .Values.cwssync.extensionTotal.secretKey }}
+            {{- end }}
+            {{- range $key, $value := .Values.cwssync.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: artifacts
+              mountPath: /app/artifacts
+          {{- with .Values.cwssync.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: artifacts
+          persistentVolumeClaim:
+            claimName: {{ include "ocws.fullname" . }}-artifacts
+{{- end }}

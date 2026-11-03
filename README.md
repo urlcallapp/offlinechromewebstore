@@ -114,12 +114,76 @@ sudo rm -rf artifacts
 
 ---
 
-Possible Implements TODO List:
-* - [ ] Add test cases.
-* - [ ] ExtensionTotal get malicious extensions
-* - [X] crx expand and create json job for cwsstore
-* - [ ] add helm (kubernetes) support
-* - [ ] fix extension container properties alignments
-* - [ ] list of manually specified extensions (artifacts/specified.json)
-* - [ ] implements malicious extension list
-* - [ ] check possibility to implement configure DNS in a air gapped env to https://clients2.google.com/service/update2/crx and https://chromewebstore.google.com when chrome uses HSTS.
+Possible Implements TODO List (status: implemented / verified):
+* - [X] Add test cases - implemented and verified (48 offline tests).
+* - [X] ExtensionTotal get malicious extensions - implemented; verified against the client contract in tests, NOT yet against the live ExtensionTotal API (needs an API key).
+* - [X] crx expand and create json job for cwsstore - pre-existing; re-verified by the cwsbuild tests.
+* - [X] add helm (kubernetes) support - implemented; validated with helm lint/template only, NOT yet deployed to a live cluster.
+* - [X] fix extension container properties alignments - implemented; verified with rendered desktop and mobile screenshots.
+* - [X] list of manually specified extensions (artifacts/specified.json) - implemented and verified by tests.
+* - [X] implements malicious extension list - implemented and verified by tests (sync skip, index exclusion, store-side serving refusal).
+* - [X] check possibility to implement configure DNS in a air gapped env to https://clients2.google.com/service/update2/crx and https://chromewebstore.google.com when chrome uses HSTS - research documented in [docs/airgapped-dns.md](docs/airgapped-dns.md); NOT yet verified against a live Chrome in an air-gapped network.
+
+Known open verification gaps: Docker image builds (no Docker available in the
+build environment used for this change), an end-to-end Chrome
+install/update cycle against a live cwsstore (see
+[docs/update-protocol.md](docs/update-protocol.md)), and the live
+ExtensionTotal API integration.
+
+## Configuration
+
+All components are configured with environment variables:
+
+| Variable | Default | Used by | Purpose |
+| --- | --- | --- | --- |
+| `CWS_ARTIFACTS_DIR` | `artifacts` | all | Mirrored CRX tree and generated indexes |
+| `CWS_ASSETS_DIR` | `assets` | cwsbuild, cwsstore | Extracted store assets (icons) |
+| `CWS_RECOMMENDED_EXTENSIONS_FILE` | `recommended_extensions.json` | cwssync | Recommended extensions to mirror |
+| `CWS_SPECIFIED_EXTENSIONS_FILE` | `<artifacts>/specified.json` | cwssync | Manually specified extensions (same format) |
+| `CWS_MALICIOUS_LIST_FILE` | `<artifacts>/malicious_extensions.json` | cwssync, cwsbuild | Malicious extension blocklist |
+| `CWS_CHROME_PROD_VERSION` | auto-detected | cwssync | Chrome `prodversion` sent to the update service |
+| `CWS_SYNC_INTERVAL_HOURS` | `24` | cwssync | Hours between scheduled sync runs |
+| `CWS_REQUEST_TIMEOUT` | `30` | cwssync | HTTP timeout in seconds |
+| `EXTENSIONTOTAL_API_KEY` | unset | cwssync | ExtensionTotal risk API key (optional) |
+| `CWS_RISK_THRESHOLD` | `70` | cwssync | Risk score at which an extension is blocked |
+
+cwssync CLI: `--once` (single sync, no scheduler), `--sync` (incremental,
+default), `--syncall` (force re-download of everything).
+
+### Manually specified extensions
+
+Drop a `specified.json` into the artifacts directory to mirror extensions
+beyond the recommended list. Same format as `recommended_extensions.json`
+(objects with `id` and `name`, or plain ID strings). Manual entries override
+recommended ones with the same ID.
+
+### Malicious extensions
+
+Extensions on the malicious list are skipped by cwssync and excluded from the
+store index by cwsbuild. The list is a JSON file (objects with `id`, plus
+`reason` / `risk`) that can be maintained by hand at
+`artifacts/malicious_extensions.json`. When `EXTENSIONTOTAL_API_KEY` is set,
+cwssync also queries the ExtensionTotal risk API and adds extensions at or
+above `CWS_RISK_THRESHOLD` to the list automatically. Without a key, or when
+the API errors, syncing continues with the local list only.
+
+## Testing
+
+``` bash
+pip install -r requirements.txt   # dev/test environment
+python -m pytest tests/ -v
+```
+
+The suite is fully offline: HTTP calls are mocked and the two CRX files under
+`cwsoffline/cwsstore/app/static/extensions/` serve as fixtures.
+
+## Kubernetes (Helm)
+
+``` bash
+helm install cws helm/offlinechromewebstore
+```
+
+Deploys shared artifacts/assets PVCs, the cwssync Deployment, a cwsbuild hook
+Job and the cwsstore Deployment + Service. For an air-gapped cluster, set
+`cwssync.enabled=false` and populate the artifacts PVC externally. See
+`helm/offlinechromewebstore/values.yaml` for all options.
