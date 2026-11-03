@@ -3,60 +3,217 @@
   "type": "object",
   "properties": {
     "openshift": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "route"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "route": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "host",
+            "annotations",
+            "insecureEdgeTerminationPolicy"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "host": {
+              "type": "string"
+            },
+            "annotations": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "insecureEdgeTerminationPolicy": {
+              "enum": [
+                "Redirect",
+                "None"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "registry": {
+      "type": "string",
+      "minLength": 1
+    },
+    "imagePullSecrets": {
+      "type": "array",
+      "items": {
         "type": "object",
         "required": [
-            "enabled",
-            "route"
+          "name"
         ],
-        "additionalProperties": false,
         "properties": {
-            "enabled": {
-                "type": "boolean"
-            },
-            "route": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                    "enabled",
-                    "host",
-                    "annotations",
-                    "insecureEdgeTerminationPolicy"
-                ],
-                "properties": {
-                    "enabled": {
-                        "type": "boolean"
-                    },
-                    "host": {
-                        "type": "string"
-                    },
-                    "annotations": {
-                        "type": "object",
-                        "additionalProperties": {
-                            "type": "string"
-                        }
-                    },
-                    "insecureEdgeTerminationPolicy": {
-                        "enum": [
-                            "Redirect",
-                            "None"
-                        ]
-                    }
-                }
-            }
+          "name": {
+            "type": "string",
+            "minLength": 1
+          }
         }
+      }
     },
-    "registry": {"type": "string", "minLength": 1},
-    "imagePullSecrets": {"type": "array", "items": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string", "minLength": 1}}}},
-    "networkPolicy": {"type": "object", "required": ["offlineRuntime"], "properties": {"offlineRuntime": {"type": "boolean"}}},
-    "persistence": {"type": "object", "properties": {"accessMode": {"enum": ["ReadWriteOnce", "ReadWriteMany"]}, "storageClass": {"type": "string"}}},
-    "cwssync": {"$ref": "#/definitions/component"},
-    "cwsbuild": {"$ref": "#/definitions/component"},
-    "cwsstore": {"allOf": [{"$ref": "#/definitions/component"}, {"type": "object", "properties": {"replicaCount": {"type": "integer", "minimum": 1}, "service": {"type": "object", "properties": {"port": {"type": "integer", "minimum": 1, "maximum": 65535}, "type": {"enum": ["ClusterIP", "NodePort", "LoadBalancer"]}}}}}]},
-    "nodeSelector": {"type": "object", "additionalProperties": {"type": "string"}},
-    "tolerations": {"type": "array"},
-    "affinity": {"type": "object"}
+    "networkPolicy": {
+      "type": "object",
+      "required": [
+        "offlineRuntime"
+      ],
+      "properties": {
+        "offlineRuntime": {
+          "type": "boolean"
+        }
+      }
+    },
+    "persistence": {
+      "type": "object",
+      "properties": {
+        "accessMode": {
+          "enum": [
+            "ReadWriteOnce",
+            "ReadWriteMany"
+          ]
+        },
+        "storageClass": {
+          "type": "string"
+        }
+      }
+    },
+    "cwssync": {
+      "$ref": "#/definitions/component"
+    },
+    "cwsbuild": {
+      "$ref": "#/definitions/component"
+    },
+    "cwsstore": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/component"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "replicaCount": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "service": {
+              "type": "object",
+              "properties": {
+                "port": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                },
+                "type": {
+                  "enum": [
+                    "ClusterIP",
+                    "NodePort",
+                    "LoadBalancer"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "nodeSelector": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "tolerations": {
+      "type": "array"
+    },
+    "affinity": {
+      "type": "object"
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "access",
+        "origin",
+        "existingConfigMap",
+        "existingSecret",
+        "resources"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "access": {
+          "enum": [
+            "anonymous",
+            "users-only"
+          ]
+        },
+        "origin": {
+          "type": "string"
+        },
+        "existingConfigMap": {
+          "type": "string"
+        },
+        "existingSecret": {
+          "type": "string"
+        },
+        "resources": {
+          "type": "object"
+        }
+      }
+    }
   },
   "definitions": {
-    "component": {"type": "object", "properties": {"enabled": {"type": "boolean"}, "env": {"type": "object", "additionalProperties": {"type": ["string", "number", "boolean"]}}, "image": {"type": "object", "properties": {"repository": {"type": "string", "minLength": 1}, "tag": {"type": "string", "minLength": 1}, "pullPolicy": {"enum": ["Always", "IfNotPresent", "Never"]}}}}}
+    "component": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        },
+        "image": {
+          "type": "object",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "minLength": 1
+            },
+            "tag": {
+              "type": "string",
+              "minLength": 1
+            },
+            "pullPolicy": {
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
+          }
+        }
+      }
+    }
   }
 }

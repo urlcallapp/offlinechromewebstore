@@ -1,0 +1,32 @@
+# Overlay on docker-compose.yaml or docker-compose-ag.yaml.
+# Terminate HTTPS in a trusted reverse proxy on localhost:8006, not store:8005.
+services:
+  cwsstore:
+    environment:
+      CWS_STORE_ACCESS: ${CWS_AUTH_ACCESS:-anonymous}
+      CWS_PUBLIC_ORIGIN: ${CWS_AUTH_ORIGIN:?set exact public HTTPS origin}
+      CWS_ADMIN_GATEWAY_SECRET_FILE: /auth-secret/gateway-secret
+    volumes:
+      - ${CWS_AUTH_SECRET_DIR:?mount existing secret directory}:/auth-secret:ro
+  cwsauth:
+    build:
+      context: ./cwsoffline/cwsstore
+      dockerfile: Dockerfile
+    image: cwsstore
+    entrypoint: [uvicorn]
+    command: [auth_gateway.main:create_app, --factory, --host, 0.0.0.0, --port, "8006", --workers, "1", --no-proxy-headers, --no-access-log]
+    environment:
+      CWS_AUTH_CONFIG_FILE: /auth-config/config.json
+      CWS_AUTH_UPSTREAM: http://cwsstore:8005
+      CWS_AUTH_ACCESS: ${CWS_AUTH_ACCESS:-anonymous}
+      CWS_AUTH_ORIGIN: ${CWS_AUTH_ORIGIN:?set exact public HTTPS origin}
+      CWS_ADMIN_GATEWAY_SECRET_FILE: /auth-secret/gateway-secret
+      CWS_LDAP_BIND_PASSWORD_FILE: /auth-secret/ldap-bind-password
+      CWS_OIDC_CLIENT_SECRET_FILE: /auth-secret/oidc-client-secret
+    volumes:
+      - ${CWS_AUTH_CONFIG_DIR:?mount reviewed config directory}:/auth-config:ro
+      - ${CWS_AUTH_SECRET_DIR:?mount existing secret directory}:/auth-secret:ro
+    ports:
+      - "127.0.0.1:8006:8006"
+    depends_on:
+      - cwsstore

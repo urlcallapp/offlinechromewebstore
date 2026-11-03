@@ -1,0 +1,8 @@
+# Infrastructure policy. CRX feed and package bytes remain public in BOTH modes.
+auth:
+  enabled: true
+  access: users-only
+  origin: https://extensions.example.internal
+  existingConfigMap: store-auth-config
+  existingSecret: store-auth-secrets
+# Set the store image to your tested source build in your reviewed values.

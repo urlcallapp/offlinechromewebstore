@@ -56,7 +56,20 @@ cwsbuild.save_extensions_info(index, str(Path(cwsbuild.ARTIFACTS_DIR) / "extensi
 
 from fastapi.testclient import TestClient
 from app.main import app
+import os
+from app.admin_access import assertion
+key = "offline-test-signing-key-" * 3
+key_file = Path(cwsbuild.ARTIFACTS_DIR) / "test-auth-key"
+key_file.write_text(key)
+os.environ["CWS_ADMIN_GATEWAY_SECRET_FILE"] = str(key_file)
 with TestClient(app) as client:
+    assert client.get("/admin").status_code == 403
+    original = client.request
+    def authorized(method, url, **kwargs):
+        headers = dict(kwargs.pop("headers", {}) or {})
+        headers["X-CWS-Admin-Assertion"] = assertion(key, method.upper(), url)
+        return original(method, url, headers=headers, **kwargs)
+    client.request = authorized
     tamper = "dhdgffkkebhmkfjojejmpbldmpobfkfo"
     translate = "aapbdbdomjkkjkaonfhkkikfgjllcleb"
     sidecars = sys.argv[1] == "True"

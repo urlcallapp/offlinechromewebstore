@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
@@ -10,7 +10,9 @@ from app.policy import generate_policy
 from app.blocklist import MALICIOUS_LIST_FILE
 from app.routes.extensions import load_extensions, crx_filesystem_path
 
-router = APIRouter()
+from app.admin_access import require_admin
+
+router = APIRouter(dependencies=[Depends(require_admin)])
 templates = Jinja2Templates(directory="app/templates")
 
 

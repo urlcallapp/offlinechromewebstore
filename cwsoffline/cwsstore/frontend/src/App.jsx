@@ -262,7 +262,7 @@ export default function App() {
         )}
       </main>
       <footer className="site-footer">
-        <p>Offline Chrome Web Store &middot; self-hosted mirror &middot; <a href="/admin">Policy exports</a> &middot; <a href="/classic">Classic view</a> &middot; <a href="https://github.com/ronel99/offlinechromewebstore">GitHub</a></p>
+        <p>Offline Chrome Web Store &middot; self-hosted mirror &middot; <a href="/admin">Policy exports</a> &middot; <a href="/auth/login">Sign in / account</a> &middot; <a href="/classic">Classic view</a> &middot; <a href="https://github.com/ronel99/offlinechromewebstore">GitHub</a></p>
       </footer>
     </>
   )

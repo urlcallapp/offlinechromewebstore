@@ -303,3 +303,5 @@ namespace UID/fsGroup are created. See [Helm OpenShift setup and acceptance
 checks](helm/offlinechromewebstore/README.md#openshift-profile-chart-03).
 Route rendering and security tests are not live OpenShift admission, PVC,
 router/certificate, or Chrome-install verification.
+
+Central authentication: see [LDAP and SSO deployment](docs/authentication.md). Admin is now closed until configured; UI anonymous/SSO is separate from public Chrome update and package endpoints.

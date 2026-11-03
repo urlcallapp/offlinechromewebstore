@@ -120,3 +120,36 @@ def test_openshift_lint():
     result = subprocess.run([HELM, 'lint', str(CHART), '-f', OPENSHIFT,
                              '--set', 'openshift.route.enabled=false'], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr + result.stdout
+
+
+AUTH_ARGS=['--set','auth.enabled=true','--set','auth.origin=https://store.test','--set','auth.existingConfigMap=store-auth','--set','auth.existingSecret=store-secrets']
+
+
+def test_auth_gateway_routes_and_offline_boundary():
+    result=render(*AUTH_ARGS,'--set','auth.access=users-only','--set','cwsstore.ingress.enabled=true','--set','networkPolicy.offlineRuntime=true')
+    assert result.returncode==0,result.stderr
+    text=result.stdout
+    assert 'name: test-offlinechromewebstore-cwsauth' in text
+    assert 'auth_gateway.main:create_app' in text
+    assert '--no-proxy-headers' in text and '--no-access-log' in text
+    assert 'value: "users-only"' in text
+    assert 'value: /auth-secret/gateway-secret' in text
+    assert 'items:' in text
+    assert 'values: [cwsbuild, cwsstore]' in text # auth not in zero-egress pod set
+    assert 'ldap-bind-password' in text
+    assert 'path: /crx' in text
+    assert 'path: /auth/health' in text
+
+
+@pytest.mark.parametrize('args',[['--set','auth.enabled=true'],['--set','auth.access=users-only'],AUTH_ARGS+['--set','cwsstore.enabled=false'],AUTH_ARGS+['--set','auth.origin=http://store.test']])
+def test_auth_invalid_chart_settings(args):
+    assert render(*args).returncode!=0
+
+
+def test_openshift_auth_profile():
+    result=openshift(*AUTH_ARGS)
+    assert result.returncode==0,result.stderr
+    assert result.stdout.count('runAsNonRoot: true')==4
+    assert result.stdout.count('readOnlyRootFilesystem: true')==4
+    assert 'name: test-offlinechromewebstore-cwsauth' in result.stdout
+    assert 'termination: edge' in result.stdout

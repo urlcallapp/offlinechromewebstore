@@ -110,7 +110,7 @@ async def serve_update_feed(request: Request):
         ]
 
     xml_content = templates.get_template("update.xml").render(
-        request=request, extensions=extensions
+        request=request, extensions=extensions, public_origin=os.environ.get("CWS_PUBLIC_ORIGIN", "").rstrip("/")
     )
     return Response(content=xml_content, media_type="application/xml")
 

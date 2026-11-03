@@ -90,3 +90,15 @@ openshift:
     annotations: {}
     # Backend serves HTTP only: edge TLS using the router's default certificate.
     insecureEdgeTerminationPolicy: Redirect
+
+# Central login edge, served from the SAME store image; pin a tested source build.
+# Config and credentials must already exist as Kubernetes resources. No secrets
+# or passwords in values. Admin is disabled when no gateway secret is configured.
+auth:
+  enabled: false
+  # anonymous = public browsing; users-only = SSO browsing, public Chrome machines.
+  access: anonymous
+  origin: ""
+  existingConfigMap: ""
+  existingSecret: ""
+  resources: {}

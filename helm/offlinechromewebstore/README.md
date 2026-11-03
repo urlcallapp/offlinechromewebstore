@@ -146,3 +146,7 @@ References:
 - [Red Hat arbitrary-UID image guidance](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/images/creating-images)
 - [Red Hat SCC guidance](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/authentication_and_authorization/managing-pod-security-policies)
 - [Red Hat Route and edge TLS guidance](https://docs.redhat.com/en/documentation/openshift_container_platform/4.16/html/networking/configuring-routes)
+
+## Central authentication
+
+Chart 0.4 adds an optional separate LDAP/OIDC gateway. See [authentication](../../docs/authentication.md) and `examples/auth/values.yaml`. Admin is closed until configured; `auth.access` controls browsing, not public Chrome update/package endpoints. Ingress/Route targets the gateway when enabled. Existing airgap store egress denial remains unchanged.

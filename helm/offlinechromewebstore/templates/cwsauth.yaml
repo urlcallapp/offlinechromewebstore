@@ -1,0 +1,112 @@
+{{- range $key, $value := .Values.cwsstore.env }}
+{{- if has $key (list "CWS_STORE_ACCESS" "CWS_PUBLIC_ORIGIN" "CWS_ADMIN_GATEWAY_SECRET_FILE") }}
+{{- fail "Configure authentication using auth values, not reserved cwsstore.env keys" }}
+{{- end }}
+{{- end }}
+{{- if and (eq .Values.auth.access "users-only") (not .Values.auth.enabled) }}
+{{- fail "auth.access=users-only requires auth.enabled=true" }}
+{{- end }}
+{{- if .Values.auth.enabled }}
+{{- if not .Values.cwsstore.enabled }}
+{{- fail "auth requires cwsstore.enabled=true" }}
+{{- end }}
+{{- if or (not .Values.auth.existingConfigMap) (not .Values.auth.existingSecret) (not (regexMatch "^https://[^/]+$" .Values.auth.origin)) }}
+{{- fail "auth requires existingConfigMap, existingSecret and an exact HTTPS origin" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ocws.fullname" . }}-cwsauth
+  labels:
+    {{- include "ocws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cwsauth
+spec:
+  # In-memory, bounded, server-side sessions. One process/replica only.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: cwsauth
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "ocws.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: cwsauth
+    spec:
+      {{- include "ocws.openshiftPod" . | nindent 6 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: cwsauth
+          {{- include "ocws.openshiftContainer" . | nindent 10 }}
+          image: {{ include "ocws.image" (dict "registry" $.Values.registry "repository" .Values.cwsstore.image.repository "tag" .Values.cwsstore.image.tag) }}
+          imagePullPolicy: {{ .Values.cwsstore.image.pullPolicy }}
+          command: [uvicorn, auth_gateway.main:create_app, --factory, --host, 0.0.0.0, --port, "8006", --workers, "1", --no-proxy-headers, --no-access-log]
+          ports:
+            - name: http
+              containerPort: 8006
+          env:
+            - name: CWS_AUTH_CONFIG_FILE
+              value: /auth-config/config.json
+            - name: CWS_AUTH_ACCESS
+              value: {{ .Values.auth.access | quote }}
+            - name: CWS_AUTH_ORIGIN
+              value: {{ .Values.auth.origin | quote }}
+            - name: CWS_AUTH_UPSTREAM
+              value: http://{{ include "ocws.fullname" . }}-cwsstore:{{ .Values.cwsstore.service.port }}
+            - name: CWS_ADMIN_GATEWAY_SECRET_FILE
+              value: /auth-secret/gateway-secret
+            - name: CWS_LDAP_BIND_PASSWORD_FILE
+              value: /auth-secret/ldap-bind-password
+            - name: CWS_OIDC_CLIENT_SECRET_FILE
+              value: /auth-secret/oidc-client-secret
+          readinessProbe:
+            httpGet:
+              path: /auth/health
+              port: http
+          volumeMounts:
+            - name: config
+              mountPath: /auth-config
+              readOnly: true
+            - name: secret
+              mountPath: /auth-secret
+              readOnly: true
+            {{- if .Values.openshift.enabled }}
+            - name: tmp
+              mountPath: /tmp
+            {{- end }}
+          {{- with .Values.auth.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Values.auth.existingConfigMap | quote }}
+        - name: secret
+          secret:
+            secretName: {{ .Values.auth.existingSecret | quote }}
+        {{- if .Values.openshift.enabled }}
+        - name: tmp
+          emptyDir: {}
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ocws.fullname" . }}-cwsauth
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8005
+      targetPort: http
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: cwsauth
+{{- end }}

@@ -2,6 +2,7 @@ import importlib
 import os
 import shutil
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -61,7 +62,20 @@ def store_client(artifact_tree, monkeypatch):
     import app.main
 
     importlib.reload(app.main)
-    return TestClient(app.main.app)
+    # Policy fixtures represent requests already authorized by the auth edge.
+    from app.admin_access import assertion
+    key_path = Path(artifact_tree["artifacts"]) / "test-auth-key"
+    key_path.write_text("test-only-key-" * 4)
+    monkeypatch.setenv("CWS_ADMIN_GATEWAY_SECRET_FILE", str(key_path))
+    client = TestClient(app.main.app)
+    original = client.request
+    def authorized(method, url, **kwargs):
+        from urllib.parse import urlsplit
+        headers = dict(kwargs.pop("headers", {}) or {})
+        headers["X-CWS-Admin-Assertion"] = assertion(key_path.read_text(), method.upper(), urlsplit(str(url)).path)
+        return original(method, url, headers=headers, **kwargs)
+    client.request = authorized
+    return client
 
 
 def _make_store_client(monkeypatch, artifact_tree):
@@ -80,7 +94,20 @@ def _make_store_client(monkeypatch, artifact_tree):
     import app.main
 
     importlib.reload(app.main)
-    return TestClient(app.main.app)
+    # Policy fixtures represent requests already authorized by the auth edge.
+    from app.admin_access import assertion
+    key_path = Path(artifact_tree["artifacts"]) / "test-auth-key"
+    key_path.write_text("test-only-key-" * 4)
+    monkeypatch.setenv("CWS_ADMIN_GATEWAY_SECRET_FILE", str(key_path))
+    client = TestClient(app.main.app)
+    original = client.request
+    def authorized(method, url, **kwargs):
+        from urllib.parse import urlsplit
+        headers = dict(kwargs.pop("headers", {}) or {})
+        headers["X-CWS-Admin-Assertion"] = assertion(key_path.read_text(), method.upper(), urlsplit(str(url)).path)
+        return original(method, url, headers=headers, **kwargs)
+    client.request = authorized
+    return client
 
 
 @pytest.fixture
