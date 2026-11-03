@@ -20,21 +20,22 @@ templates = Jinja2Templates(directory="app/templates")
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
+# The React storefront is the default at / (built assets are committed under
+# app/static/app for bare installs; Docker rebuilds them from source) and
+# stays reachable at /app/. The server-rendered pages are the classic
+# storefront at /classic and /classic/extension/{id} - the no-JS fallback.
+app.mount(
+    "/app",
+    StaticFiles(directory="app/static/app", html=True, check_dir=False),
+    name="storefront_app",
+)
+
 
 def _guarded_file_response(root_dir, file_path, id_position):
-    """Serve a file only if it is inside root_dir and its extension ID is not
-    on the malicious blocklist. Extension-owned files are keyed by ID at
-    id_position in the path."""
-    from app.blocklist import load_blocked_ids
+    from app.paths import guarded_path
 
-    parts = file_path.split("/")
-    if len(parts) > id_position and parts[id_position] in load_blocked_ids():
-        return JSONResponse(content={"error": "Extension is blocked"}, status_code=404)
-    root = os.path.abspath(root_dir)
-    full = os.path.abspath(os.path.join(root, file_path))
-    if not (full == root or full.startswith(root + os.sep)):
-        return JSONResponse(content={"error": "Not found"}, status_code=404)
-    if os.path.isfile(full):
+    full = guarded_path(root_dir, file_path, id_position)
+    if full is not None:
         return FileResponse(full)
     return JSONResponse(content={"error": "Not found"}, status_code=404)
 
@@ -61,9 +62,18 @@ def load_extensions():
         return filter_extensions(json.load(handle))
 
 
+SPA_INDEX = os.path.join("app", "static", "app", "index.html")
+
+
 @app.get("/", response_class=HTMLResponse, name="read_root")
-async def read_root(request: Request):
-    """Render the homepage with the mirrored extensions."""
+async def read_root():
+    """Serve the React storefront (the default)."""
+    return FileResponse(SPA_INDEX)
+
+
+@app.get("/classic", response_class=HTMLResponse, name="classic_storefront")
+async def classic_storefront(request: Request):
+    """Render the server-rendered homepage with the mirrored extensions."""
     return templates.TemplateResponse(
         request,
         "index.html",
