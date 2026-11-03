@@ -51,7 +51,7 @@ def test_sync_uses_merged_list(tmp_path, monkeypatch):
 
     importlib.reload(config)
     recommended = _write(tmp_path / "rec.json", [{"id": "a" * 32, "name": "A"}])
-    syncer = ChromeExtensionSync(extensions_file=recommended)
+    syncer = ChromeExtensionSync(extensions_file=recommended, report_file=str(tmp_path / "report.json"))
     with patch("cwssync.sync.get_extension_details", return_value=ExtensionDetails("A", "1.0", "a" * 32)), \
          patch.object(syncer.downloader, "download", return_value="/tmp/x.crx"):
         assert syncer.sync_extensions() == 0

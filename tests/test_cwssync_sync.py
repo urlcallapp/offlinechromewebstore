@@ -26,7 +26,7 @@ def test_sync_counts_failures(tmp_path):
             {"id": "badbadbadbadbadbadbadbadbadbadbad", "name": "Bad"},
         ],
     )
-    syncer = ChromeExtensionSync(extensions_file=extensions_file)
+    syncer = ChromeExtensionSync(extensions_file=extensions_file, report_file=str(tmp_path / "report.json"))
 
     def fake_details(extension_id, name=None, prodversion=None, timeout=None):
         if extension_id.startswith("bad"):
@@ -45,7 +45,7 @@ def test_sync_counts_failures(tmp_path):
 
 def test_sync_supports_plain_string_ids(tmp_path):
     extensions_file = _write_list(tmp_path / "ext.json", ["a" * 32])
-    syncer = ChromeExtensionSync(extensions_file=extensions_file)
+    syncer = ChromeExtensionSync(extensions_file=extensions_file, report_file=str(tmp_path / "report.json"))
     with patch(
         "cwssync.sync.get_extension_details",
         return_value=ExtensionDetails("a" * 32, "1.0.0", "a" * 32),
