@@ -30,6 +30,44 @@ On the non-Internet connected system, **cwsstore**:
 
 
 
+## Online/offline boundary
+
+Only **cwssync** runs in the Internet-connected environment. It downloads CRXs,
+resolves source metadata, and optionally checks Web Store IDs with ExtensionTotal.
+The ExtensionTotal API key belongs only on that online sync host. Do not transfer
+the key or configure it on cwsbuild/cwsstore.
+
+Transfer the **artifacts directory**, not just individual CRXs, across the
+boundary. Preserve the `extensions/<id>/<version>/*.crx` paths and include
+`extension_metadata.json` (origin, tags and description) and
+`malicious_extensions.json` (the local blocklist), when present. Without these
+sidecars CRXs can still be built, but source labels fall back to `local` and
+there are no transferred blocklist decisions. Copy a completed sync snapshot,
+not files still being written by a running sync.
+
+Inside the air-gapped/offline environment, **cwsbuild** reads those local CRXs
+and sidecars, extracts icons/metadata and writes `extensions_info.json` plus
+`assets/`. It never calls ExtensionTotal or the Web Store. **cwsstore** serves
+those local files, update feeds and the bundled UI without outbound Internet
+access. The local blocklist remains enforced by both build and store. Remote
+risk lookups are not part of offline-store acceptance.
+
+Build the images online (or in a separate build environment); image builds
+install dependencies and are not an offline runtime step. On the
+offline host, preload the cwsbuild/cwsstore images, then use the air-gapped
+Compose file explicitly so cwssync is not started:
+
+```bash
+docker compose -f docker-compose-ag.yaml run --rm --no-deps --pull never cwsbuild
+docker compose -f docker-compose-ag.yaml up --no-deps --pull never -d cwsstore
+```
+
+The builder has networking disabled in this Compose file. The store needs only
+inbound access from local clients; restrict its outbound traffic using your
+network/cluster policy. For Helm, set `cwssync.enabled=false`, preload the images
+and populate the artifacts PVC before the build Job runs. No live ExtensionTotal
+key or service is required in that cluster.
+
 ## Requirements
 * Docker (ideally with docker-compose for simplicity)
 
@@ -58,13 +96,13 @@ On the non-Internet connected system:
 1. Run the **cwsbuild** service to build assets
 
     ``` bash
-    docker compose up cwsbuild
+    docker compose -f docker-compose-ag.yaml run --rm --no-deps --pull never cwsbuild
     ```
 
 2. Run the cwsstore service, ensuring the artifacts are accessible to the service.
 
     ``` bash
-    docker compose up cwsstore -d
+    docker compose -f docker-compose-ag.yaml up --no-deps --pull never -d cwsstore
     ```
 3. Configure chrome policy to add **_http://cws_intranet_domain/*_** as **ExtensionInstallSources**, see [Configure GPO](#configure-gpo) section
 4. Open Chrome, hopefully you can magically install extensions.
@@ -124,11 +162,18 @@ Possible Implements TODO List (status: implemented / verified):
 * - [X] implements malicious extension list - implemented and verified by tests (sync skip, index exclusion, store-side serving refusal).
 * - [X] check possibility to implement configure DNS in a air gapped env to https://clients2.google.com/service/update2/crx and https://chromewebstore.google.com when chrome uses HSTS - research documented in [docs/airgapped-dns.md](docs/airgapped-dns.md); NOT yet verified against a live Chrome in an air-gapped network.
 
-Known open verification gaps: Docker image builds (no Docker available in the
-build environment used for this change), an end-to-end Chrome
-install/update cycle against a live cwsstore (see
-[docs/update-protocol.md](docs/update-protocol.md)), and the live
-ExtensionTotal API integration.
+Verification: actual Docker image builds and a containerized fixture
+build/download smoke test passed on main in
+[Verify run 41639043329](https://github.com/urlcallapp/offlinechromewebstore/actions/runs/41639043329).
+The offline regression suite also builds and serves real CRX fixtures in a fresh
+process with outbound connections/DNS blocked, without importing cwssync, both
+with and without transferred metadata/blocklist sidecars.
+
+Remaining target-environment checks: an end-to-end Chrome install/update cycle
+against the deployed cwsstore (see [docs/update-protocol.md](docs/update-protocol.md))
+and a live Helm deployment. Separately, the optional online cwssync
+ExtensionTotal integration still needs a live API key for acceptance testing;
+that does not block offline cwsbuild/cwsstore operation.
 
 ## Configuration
 
@@ -140,7 +185,7 @@ All components are configured with environment variables:
 | `CWS_ASSETS_DIR` | `assets` | cwsbuild, cwsstore | Extracted store assets (icons) |
 | `CWS_RECOMMENDED_EXTENSIONS_FILE` | `recommended_extensions.json` | cwssync | Recommended extensions to mirror |
 | `CWS_SPECIFIED_EXTENSIONS_FILE` | `<artifacts>/specified.json` | cwssync | Manually specified extensions (same format) |
-| `CWS_MALICIOUS_LIST_FILE` | `<artifacts>/malicious_extensions.json` | cwssync, cwsbuild | Malicious extension blocklist |
+| `CWS_MALICIOUS_LIST_FILE` | `<artifacts>/malicious_extensions.json` | cwssync, cwsbuild, cwsstore | Local malicious extension blocklist |
 | `CWS_CHROME_PROD_VERSION` | auto-detected | cwssync | Chrome `prodversion` sent to the update service |
 | `CWS_SYNC_INTERVAL_HOURS` | `24` | cwssync | Hours between scheduled sync runs |
 | `CWS_REQUEST_TIMEOUT` | `30` | cwssync | HTTP timeout in seconds |

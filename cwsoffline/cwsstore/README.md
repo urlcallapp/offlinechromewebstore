@@ -1,5 +1,16 @@
 # Offline Chrome Web Store
 
+## Runtime boundary
+
+This is the offline serving component. Run cwssync (including optional
+ExtensionTotal lookups) on an Internet-connected host, transfer a completed
+artifacts snapshot with metadata/blocklist sidecars, and run cwsbuild in the
+offline environment before starting cwsstore. Neither cwsbuild nor cwsstore
+needs an ExtensionTotal API key or outbound Internet connection. Container
+images and dependencies must be built/preloaded before entering the offline
+network. See the root README's online/offline boundary for transfer and Compose
+commands.
+
 This project is an offline version of the Chrome Web Store, allowing users to browse and download Chrome extensions in a local environment.
 
 ## Features
