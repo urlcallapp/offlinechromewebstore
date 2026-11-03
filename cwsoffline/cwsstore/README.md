@@ -46,78 +46,62 @@ is reported as `in_house_missing` and never appears in the store. CRXs
 found in the tree with no source entry are labeled `local` (unknown
 provenance).
 
-## Project Structure
+## Source definitions
 
-```
-offline-chrome-webstore
-├── app
-│   ├── __init__.py
-│   ├── main.py
-│   ├── templates
-│   │   ├── base.html
-│   │   ├── index.html
-│   │   └── extension.html
-│   ├── static
-│   │   ├── css
-│   │   │   └── styles.css
-│   │   ├── js
-│   │   │   └── scripts.js
-│   │   └── extensions_info.json
-│   └── routes
-│       ├── __init__.py
-│       └── extensions.py
-├── requirements.txt
-└── README.md
+For a mirrored extension, add its ID to the recommended list or the artifacts
+volume's `specified.json`. For an in-house extension, place its CRX at
+`artifacts/extensions/<id>/<version>/<id>_<name>_<version>.crx` and add:
+
+```json
+[
+  {
+    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "name": "Internal tool",
+    "origin": "in-house",
+    "tags": ["internal", "devtools"],
+    "description": "An internal extension."
+  }
+]
 ```
 
-## Installation
+Use the extension's real 32-character Chrome ID, not the example ID. Run
+`cwssync` to resolve source metadata, then `cwsbuild` to rebuild the catalog.
+Do not edit `extensions_info.json`: it is generated. In-house entries are
+screened against the local blocklist only; ExtensionTotal scans mirrored Web
+Store IDs when configured. Unclassified tree CRXs are labeled `local`.
 
-1. Clone the repository:
-   ```
-   git clone <repository-url>
-   cd offline-chrome-webstore
-   ```
+The browser reads the generated catalog from `/json`. `/artifacts` serves
+CRX packages under `extensions/` only, never source definitions or sync reports.
+The newest package supplies display metadata and icons; older versions remain
+available for download.
 
-2. Install the required dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
+## Local development
 
-## Editing Extensions
+From the repository root:
 
-1. **Edit `extensions_info.json`:**
-   - The file is located at `app/static/extensions_info.json`.
-   - Add new extensions by appending objects with the following structure:
-     ```json
-     {
-         "extension_id": "unique_extension_id",
-         "name": "Extension Name",
-         "description": "Short description of the extension.",
-         "version": "Extension version",
-         "author": "Author or organization name",
-         "iconUrl": "/static/icons/extension_icon.png",
-         "downloadUrl": "/static/extensions/unique_extension_id.crx",
-         "rating": 4.5
-     }
-     ```
+```sh
+pip install -r requirements.txt
+python -m pytest -q
+cd cwsoffline/cwsstore/frontend
+npm ci
+npm test
+npm run build
+cd ..
+CWS_ARTIFACTS_DIR=/absolute/path/to/artifacts \
+CWS_ASSETS_DIR=/absolute/path/to/assets \
+uvicorn app.main:app --host 127.0.0.1 --port 8005
+```
 
-2. **Add CRX Files:**
-   - Place the `.crx` files for the extensions in the `app/static/extensions` directory.
-   - Ensure the `downloadUrl` in `extensions_info.json` matches the file path.
+The frontend toolchain requires Node.js 22.12 or newer. Commit the regenerated
+`app/static/app` bundle when changing frontend source. Docker builds the
+bundle itself and excludes Node from the final runtime. All runtime resources
+are local; the GitHub footer link is optional external navigation.
 
-## Usage
-
-1. Start the FastAPI application:
-   ```
-   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-   ```
-
-2. Open your web browser and navigate to `http://localhost:8000` to access the Offline Chrome Web Store.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a pull request or open an issue for any suggestions or improvements.
+For Docker, Compose, Helm and deployment configuration see the
+[repository README](../../README.md). A real Chrome installation/update in the
+target air-gapped network, a Helm deployment in the target cluster, and live
+ExtensionTotal credentials remain environment-specific acceptance checks.
 
 ## License
 
-This project is licensed under the MIT License. See the LICENSE file for more details.
+See [LICENSE](../../LICENSE).

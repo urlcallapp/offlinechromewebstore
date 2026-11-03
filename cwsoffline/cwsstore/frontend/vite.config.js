@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 
 // The built assets are served by cwsstore under /app/ (mounted from
 // app/static/app/). They are committed so the Docker image and air-gapped
-// installs never need npm at build or run time.
+// bare installs never need npm. Docker rebuilds from source in its Node stage.
 export default defineConfig({
   plugins: [react()],
   base: '/app/',

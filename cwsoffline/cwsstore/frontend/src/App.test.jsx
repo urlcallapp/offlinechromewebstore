@@ -162,6 +162,7 @@ test('detail view opens, lists versions and links downloads honestly', async () 
 test('theme toggle flips the theme, persists it and updates its label', async () => {
   mockFetch(EXTENSIONS)
   render(<App />)
+  await screen.findByText('Adblock Plus')
   const toggle = screen.getByRole('button', { name: 'Switch to dark mode' })
   fireEvent.click(toggle)
   expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
