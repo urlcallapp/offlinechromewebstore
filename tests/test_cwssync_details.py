@@ -96,3 +96,15 @@ def test_details_carry_download_metadata():
         result = details.get_extension_details("abc", name="X", prodversion="131.0.0.0")
     assert result.codebase == "https://example.com/x.crx"
     assert result.hash_sha256 == "deadbeef"
+
+
+def test_malformed_xml_raises_value_error():
+    # Callers guard with `except ValueError`; an ET.ParseError would escape them.
+    with pytest.raises(ValueError, match="Malformed XML"):
+        details.parse_updatecheck_response(b"this is not xml")
+
+
+def test_get_extension_version_malformed_xml_raises_value_error():
+    with patch("cwssync.details.requests.get", return_value=_response(b"<gupdate><unclosed")):
+        with pytest.raises(ValueError, match="Malformed XML"):
+            details.get_extension_version("abc", prodversion="131.0.0.0")
