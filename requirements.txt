@@ -1,5 +1,7 @@
-requests==2.31.0
-schedule==1.2.0
-bs4
-packaging
-flask
+# Development/test environment. Runtime dependencies for each component live
+# in that component's own requirements.txt next to its Dockerfile.
+-r cwsoffline/cwssync/requirements.txt
+-r cwsoffline/cwsbuild/requirements.txt
+-r cwsoffline/cwsstore/requirements.txt
+pytest>=8,<9
+httpx>=0.27
