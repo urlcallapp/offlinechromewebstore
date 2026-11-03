@@ -65,3 +65,30 @@ def test_unreadable_crx_is_skipped(artifact_tree):
     )
     assert all(entry["extension_id"] != "c" * 32 for entry in index)
     assert len(index) == 2
+
+
+def test_latest_version_owns_metadata_and_clean_assets(tmp_path):
+    import json
+    import zipfile
+    ext_id = 'a' * 32
+    artifacts = tmp_path / 'artifacts'
+    assets = tmp_path / 'assets'
+    for version, name in [('2.0', 'Newest'), ('1.0', 'Oldest')]:
+        folder = artifacts / 'extensions' / ext_id / version
+        folder.mkdir(parents=True)
+        with zipfile.ZipFile(folder / f'{ext_id}_Test_{version}.crx', 'w') as archive:
+            archive.writestr('manifest.json', json.dumps({'name': name, 'version': version, 'description': name, 'icons': {'128': 'icon.png'}}))
+            archive.writestr('icon.png', name)
+            archive.writestr(name + '.txt', name)
+    index = cwsbuild.build_index(dest_folder=str(assets), artifacts_dir=str(artifacts))
+    assert index[0]['name'] == index[0]['description'] == 'Newest'
+    assert [v['version'] for v in index[0]['versions']] == ['2.0', '1.0']
+    assert (assets / ext_id / 'icon.png').read_text() == 'Newest'
+    assert not (assets / ext_id / 'Oldest.txt').exists()
+
+
+def test_icon_path_cannot_escape_extension(tmp_path):
+    (tmp_path / 'secret').write_text('secret')
+    dest = tmp_path / 'extension'
+    dest.mkdir()
+    assert cwsbuild.resolve_icon({'icons': {'128': '../secret'}}, str(dest), 'a' * 32) == cwsbuild.FALLBACK_ICON_URL

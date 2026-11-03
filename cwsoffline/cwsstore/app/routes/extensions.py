@@ -46,8 +46,10 @@ def crx_filesystem_path(extension):
     path_url = versions[0]["path_url"]
     if path_url.startswith(config.ARTIFACTS_URL_PREFIX):
         path_url = path_url[len(config.ARTIFACTS_URL_PREFIX):]
-    candidate = os.path.join(config.ARTIFACTS_DIR, path_url)
-    return candidate if os.path.exists(candidate) else None
+    from app.paths import guarded_path
+
+    return guarded_path(config.ARTIFACTS_DIR, path_url, id_position=1)
+
 
 
 def _localname(tag):
@@ -86,7 +88,7 @@ async def serve_update_feed(request: Request):
 
     GET returns an update response for every mirrored extension. POST parses
     the updatecheck request Chrome sends and answers only for requested apps,
-    reporting unknown IDs as noupdate.
+    omitting unknown IDs.
     """
     extensions = load_extensions()
     if extensions is None:
@@ -97,10 +99,11 @@ async def serve_update_feed(request: Request):
         requested = set(parse_updatecheck_appids(await request.body()))
     elif "x" in request.query_params:
         # clients2-style GET: /crx?x=id%3D<extension_id>%26uc
-        for part in request.query_params.get("x", "").split("&"):
-            key, _, value = part.partition("=")
-            if key == "id" and value:
-                requested.add(value)
+        for query in request.query_params.getlist("x"):
+            for part in query.split("&"):
+                key, _, value = part.partition("=")
+                if key == "id" and value:
+                    requested.add(value)
     if requested:
         extensions = [
             ext for ext in extensions if ext.get("extension_id") in requested

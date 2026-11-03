@@ -1,0 +1,55 @@
+name: Verify
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: cwsoffline/cwsstore/frontend/package-lock.json
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+      - name: Frontend tests, dependency audit and build
+        working-directory: cwsoffline/cwsstore/frontend
+        run: |
+          npm ci --no-fund
+          npm test
+          npm audit --audit-level=moderate
+          npm run build
+          git diff --exit-code -- ../app/static/app
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build all runtime images without publishing
+        run: docker compose build
+      - name: Exercise the built images against a local CRX fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          id=dhdgffkkebhmkfjojejmpbldmpobfkfo
+          mkdir -p "artifacts/extensions/$id/5.3.3" assets
+          cp "tests/fixtures/$id.crx" "artifacts/extensions/$id/5.3.3/${id}_Tampermonkey_5.3.3.crx"
+          docker compose run --rm --no-deps cwsbuild
+          docker compose up --no-deps -d cwsstore
+          trap 'docker compose logs; docker compose down' EXIT
+          curl --fail --retry 15 --retry-delay 2 --retry-all-errors http://localhost:8005/json
+          curl --fail http://localhost:8005/ | grep '/app/assets/'
+          curl --fail http://localhost:8005/classic | grep Tampermonkey
+          curl --fail http://localhost:8005/crx | grep "$id"
+          curl --fail "http://localhost:8005/download/$id" -o /tmp/download.crx
+          cmp /tmp/download.crx "tests/fixtures/$id.crx"
+          test "$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:8005/static/extensions/$id.crx")" = 404
+          docker compose run --rm --no-deps cwssync python extension_sync.py --help
