@@ -56,19 +56,25 @@ Two conditions decide whether `clients2.google.com` (update service) and
    Chrome removed its static Google key pins years ago, so locally rooted
    interception is no longer blocked by pinning.
 
-So: technically possible on enterprise-managed devices with a local CA and
-clean profiles, but it reimplements what the extension policies already give
-you, it breaks the moment a device carries stale HSTS state, and spoofing
-`chromewebstore.google.com` additionally means mirroring a complex dynamic
-web app, not just the update protocol.
+What this does NOT establish: that interception actually works. Absence of a
+static HSTS entry is only one precondition. Dynamic HSTS state carried from
+previous real-Google visits, per-browser handling of locally installed roots,
+certificate name/policy checks and Chrome version behavior can each still
+block the connection, and none of that was verified against a live browser.
+Treat "enterprise CA + DNS override" as an unproven hypothesis, not a
+guaranteed route. Even if it works, it reimplements what the extension
+policies already give you, and spoofing `chromewebstore.google.com`
+additionally means mirroring a complex dynamic web app, not just the update
+protocol.
 
 ## Recommendation
 
 - Point Chrome at cwsstore with `ExtensionInstallForcelist` /
   `ExtensionSettings.update_url` / `ExtensionInstallSources` (see
   examples/policy/). No DNS changes required.
-- Keep DNS redirection documented here as a fallback for environments where
-  policies cannot be pushed but DNS can, with the caveats above.
+- DNS redirection stays an unverified hypothesis for environments where
+  policies cannot be pushed but DNS can; it would need a live managed-device
+  experiment before anyone relies on it.
 
 ## Sources
 
