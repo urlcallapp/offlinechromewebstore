@@ -9,6 +9,10 @@ spec:
   {{- if .Values.cwsstore.ingress.className }}
   ingressClassName: {{ .Values.cwsstore.ingress.className }}
   {{- end }}
+  {{- with .Values.cwsstore.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   rules:
     - host: {{ .Values.cwsstore.ingress.host }}
       http:

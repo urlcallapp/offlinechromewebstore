@@ -1,0 +1,19 @@
+{{- if .Values.networkPolicy.offlineRuntime }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ocws.fullname" . }}-offline-runtime
+  labels:
+    {{- include "ocws.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "ocws.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [cwsbuild, cwsstore]
+  policyTypes: [Egress]
+  egress: []
+{{- end }}

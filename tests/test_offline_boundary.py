@@ -64,8 +64,14 @@ with TestClient(app) as client:
         assert entry["tags"] == ["tools"]
         assert entry["description"] == "Transferred metadata"
     for route in ["/", "/app/", "/classic", "/classic/extension/" + tamper,
-                  "/api/extensions/" + tamper, "/crx", "/" + entry["image_path_url"]]:
+                  "/api/extensions/" + tamper, "/admin", "/crx", "/" + entry["image_path_url"]]:
         assert client.get(route).status_code == 200, route
+    exported = client.post("/api/admin/policy/export", json={
+        "base_url": "https://extensions.example.internal", "default_mode": "blocked",
+        "extensions": {tamper: "force_installed"},
+    })
+    assert exported.status_code == 200
+    assert exported.json()["extension_settings"][tamper]["override_update_url"] is True
     # The served package is the original transferred CRX, not a rebuilt package.
     expected = next((Path(cwsbuild.ARTIFACTS_DIR) / "extensions" / tamper).rglob("*.crx")).read_bytes()
     assert client.get("/download/" + tamper).content == expected

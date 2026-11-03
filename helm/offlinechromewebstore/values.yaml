@@ -65,4 +65,16 @@ cwsstore:
     enabled: false
     className: ""
     host: cws.local
+    # Existing TLS secret; no private keys in values.
+    tls: []
   resources: {}
+
+# Optional cluster-enforced offline runtime boundary. Requires a CNI that
+# enforces Kubernetes NetworkPolicy. Does not block the online sync component.
+networkPolicy:
+  offlineRuntime: false
+
+# Scheduling shared RWO volumes is the administrator's responsibility.
+nodeSelector: {}
+tolerations: []
+affinity: {}
