@@ -20,6 +20,15 @@ templates = Jinja2Templates(directory="app/templates")
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
+# The React storefront (built assets are committed under app/static/app, so
+# no npm step is needed at image build or run time). The server-rendered
+# pages stay available at / and /extension/{id} and as the no-JS fallback.
+app.mount(
+    "/app",
+    StaticFiles(directory="app/static/app", html=True, check_dir=False),
+    name="storefront_app",
+)
+
 
 def _guarded_file_response(root_dir, file_path, id_position):
     """Serve a file only if it is inside root_dir and its extension ID is not

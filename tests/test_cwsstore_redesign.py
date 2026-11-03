@@ -73,3 +73,19 @@ def test_storefront_scripts_served(store_client, built_index):
 
 def test_removed_tailwind_runtime_is_gone(store_client, built_index):
     assert store_client.get("/static/js/tailwindcss_3.4.16.js").status_code == 404
+
+
+def test_react_storefront_mounted(store_client, built_index):
+    """The built React bundle is served at /app/ when present."""
+    import os
+
+    if not os.path.exists(
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                     "cwsoffline", "cwsstore", "app", "static", "app", "index.html")
+    ):
+        import pytest
+
+        pytest.skip("React storefront assets not built")
+    response = store_client.get("/app/")
+    assert response.status_code == 200
+    assert 'id="root"' in response.text

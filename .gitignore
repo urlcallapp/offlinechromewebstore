@@ -173,3 +173,7 @@ cython_debug/
 
 artifacts/
 assets/
+# The React storefront's built bundle is committed on purpose: the Docker
+# image and air-gapped installs must not need npm at build or run time.
+!cwsoffline/cwsstore/app/static/app/assets/
+!cwsoffline/cwsstore/app/static/app/assets/*
