@@ -19,6 +19,13 @@ RECOMMENDED_EXTENSIONS_FILE = os.environ.get(
     "CWS_RECOMMENDED_EXTENSIONS_FILE", "recommended_extensions.json"
 )
 
+# Optional JSON file with manually specified extensions to mirror on top of
+# the recommended list. Defaults to specified.json inside the artifacts dir,
+# so it can be dropped in next to the mirrored content.
+SPECIFIED_EXTENSIONS_FILE = os.environ.get(
+    "CWS_SPECIFIED_EXTENSIONS_FILE", os.path.join(ARTIFACTS_DIR, "specified.json")
+)
+
 # Chrome version sent as prodversion to the update service. When unset, the
 # latest stable version is resolved via chrome_version.get_latest_chrome_version.
 CHROME_PROD_VERSION = os.environ.get("CWS_CHROME_PROD_VERSION")
