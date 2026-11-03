@@ -26,7 +26,10 @@ def test_default_and_airgapped():
     assert 'egress: []' in result.stdout
     assert 'values: [cwsbuild, cwsstore]' in result.stdout
     assert result.stdout.count('imagePullPolicy: Never') == 2
-    assert result.stdout.count('readOnly: true') == 2
+    assert result.stdout.count('readOnly: true') == 3
+    assert 'claimName: test-offlinechromewebstore-intake' in result.stdout
+    assert 'mountPath: /store/intake' in result.stdout
+    assert 'mountPath: /app/intake' in result.stdout
 
 
 def test_private_registry_secrets_and_tls():
@@ -69,7 +72,7 @@ def test_openshift_restricted_profile_and_route():
                       'kind: SecurityContextConstraints', 'kind: ClusterRoleBinding',
                       'privileged: true', 'initContainers:', 'kind: Ingress', 'host:']:
         assert forbidden not in text
-    assert text.count('readOnly: true') == 2
+    assert text.count('readOnly: true') == 3
 
 
 def test_openshift_disconnected_composition():

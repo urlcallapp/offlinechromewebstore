@@ -95,3 +95,39 @@ def test_icon_path_cannot_escape_extension(tmp_path):
     dest = tmp_path / 'extension'
     dest.mkdir()
     assert cwsbuild.resolve_icon({'icons': {'128': '../secret'}}, str(dest), 'a' * 32) == cwsbuild.FALLBACK_ICON_URL
+
+
+def test_consume_intake_moves_valid_and_keeps_invalid(tmp_path, caplog):
+    import cwsbuild
+    from crx_helpers import crx3, key_id
+    from test_crx_identity import archive
+
+    intake = tmp_path / "intake"
+    artifacts = tmp_path / "artifacts"
+    upload_dir = intake / key_id() / "2.1"
+    upload_dir.mkdir(parents=True)
+    valid = upload_dir / f"{key_id()}_Internal-Tool_2.1.crx"
+    package = crx3(archive(version="2.1"))
+    valid.write_bytes(package)
+    junk_dir = intake / "junk"
+    junk_dir.mkdir()
+    junk = junk_dir / "broken.crx"
+    junk.write_bytes(b"not a crx")
+
+    consumed = cwsbuild.consume_intake(str(intake), str(artifacts))
+    assert consumed == 1
+    target = artifacts / "extensions" / key_id() / "2.1" / valid.name
+    assert target.is_file() and target.read_bytes() == package
+    assert not valid.exists()
+    assert junk.exists()  # invalid upload stays for admin review
+    assert "Refusing staged upload" in caplog.text
+
+    index = cwsbuild.build_index(artifacts_dir=str(artifacts), dest_folder=str(tmp_path / "assets"))
+    entry = next(item for item in index if item["extension_id"] == key_id())
+    assert entry["versions"][0]["version"] == "2.1"
+    assert entry["versions"][0]["path_url"].startswith("artifacts/extensions/")
+
+
+def test_consume_intake_unset_is_noop(tmp_path):
+    import cwsbuild
+    assert cwsbuild.consume_intake(None, str(tmp_path)) == 0 or cwsbuild.INTAKE_DIR == ""

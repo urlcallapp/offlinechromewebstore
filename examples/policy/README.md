@@ -5,9 +5,41 @@ origin reachable by managed clients, choose the default explicitly, and select
 extensions/modes. Preview before downloading:
 
 - GPO JSON: compact **ExtensionSettings value only**, one line, no wrapper.
-- Linux JSON: `{"ExtensionSettings": {...}}` for managed-policy deployment.
+- Linux JSON: `{"ExtensionSettings": {...}}` (plus a `3rdparty` block when
+  extension managed policy is selected) for managed-policy deployment.
+- Windows .reg: machine-registry import for direct testing. It is NOT a
+  GPMC/GPO import format.
+- GPO PowerShell: merges the same values into YOUR existing named GPO with
+  `Set-GPRegistryValue`. The store never runs it; running it modifies the named
+  GPO. It refuses to run until you set the GPO name, and never creates, deletes
+  or links GPOs.
+- Forcelist/install-sources references: legacy formats ExtensionSettings
+  overrides; never deploy both strategies together.
 - Allowlist reference: selected non-blocked IDs, not a standalone policy file.
 - Review bundle: all formats, warnings, source links and the selected origin.
+
+## Uploading your own extensions
+
+`/admin` also stages first-party CRX uploads (your own or vetted packages) when
+the store runs with `CWS_INTAKE_DIR` set (the Docker images and Helm chart set
+it to a dedicated intake volume). Uploads are checked for CRX structure,
+manifest version shape and the malicious blocklist, then land in the intake
+directory only. Structure is not authenticity: upload only packages you trust.
+The next `cwsbuild` run revalidates and moves staged files into
+`artifacts/extensions/<id>/<version>/`, so they index, serve and update like
+synced packages. The store never writes to the artifacts or assets trees.
+
+## Extension managed policy
+
+The spec's optional `extension_policies` object (`{"<id>": {...values...}}`)
+sets an extension's own managed configuration, validated against the
+`storage.managed_schema` declared in that extension's built manifest. Types,
+enums, required keys and closed objects are enforced; values for extensions
+without a declared schema are refused. Values land under
+`HKLM\Software\Policies\Google\Chrome\3rdparty\extensions\<id>\policy`
+in the .reg/PowerShell exports and under `3rdparty.extensions` in the Linux
+JSON. Chrome performs the final validation at runtime; complex constraint
+keywords (patterns, ranges, lengths) are reported as not enforced here.
 
 This is a policy generator, not an authenticated device-management service. It
 has no saved policies, device inventory, device changes, remote fetches, or
@@ -28,6 +60,8 @@ python cwsoffline/cwsstore/app/policy.py \
   --catalog artifacts/extensions_info.json \
   --blocklist artifacts/malicious_extensions.json --format bundle > review.json
 ```
+
+Add `--assets-dir assets` when the spec uses `extension_policies`.
 
 Use `--format gpo`, `--format linux`, or `--format allowlist` for the individual
 outputs. CLI generation is standard-library-only and does not import sync code.

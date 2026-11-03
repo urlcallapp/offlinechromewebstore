@@ -16,6 +16,7 @@ WORKDIR /store
 
 ENV CWS_ARTIFACTS_DIR=/store/artifacts
 ENV CWS_ASSETS_DIR=/store/assets
+ENV CWS_INTAKE_DIR=/store/intake
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
