@@ -50,3 +50,22 @@ def test_http_error_returns_none(tmp_path):
     with patch("cwssync.download.requests.get", return_value=_stream_response(status_code=404)):
         assert downloader.download(EXT_ID, "Dark Reader", "4.9.1") is None
     assert not os.path.exists(downloader.crx_path(EXT_ID, "Dark-Reader", "4.9.1"))
+
+
+def test_prodversion_resolved_when_unset(tmp_path):
+    """A downloader without an explicit prodversion must still send one."""
+    downloader = ChromeExtensionDownloader(artifacts_dir=str(tmp_path))
+    with patch("cwssync.download.requests.get", return_value=_stream_response()) as get, \
+         patch("cwssync.chrome_version.get_latest_chrome_version", return_value="142.0.0.0"):
+        downloader.download(EXT_ID, "Dark Reader", "4.9.1")
+    assert get.call_args.kwargs["params"]["prodversion"] == "142.0.0.0"
+    # resolved once, then cached on the instance
+    assert downloader.prodversion == "142.0.0.0"
+
+
+def test_prodversion_fallback_when_detection_fails(tmp_path):
+    downloader = ChromeExtensionDownloader(artifacts_dir=str(tmp_path))
+    with patch("cwssync.download.requests.get", return_value=_stream_response()) as get, \
+         patch("cwssync.chrome_version.get_latest_chrome_version", return_value=None):
+        downloader.download(EXT_ID, "Dark Reader", "4.9.1")
+    assert get.call_args.kwargs["params"]["prodversion"]
