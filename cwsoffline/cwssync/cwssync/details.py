@@ -29,7 +29,10 @@ def parse_updatecheck_response(content):
     these as attributes on <updatecheck>; a child <manifest> element is
     accepted as a fallback. Raises ValueError on noupdate/error statuses.
     """
-    root = ET.fromstring(content)
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError as exc:
+        raise ValueError(f"Malformed XML in the update response: {exc}") from exc
     version = codebase = None
     size = hash_sha256 = None
     for element in root.iter():
