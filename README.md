@@ -115,7 +115,7 @@ sudo rm -rf artifacts
 ---
 
 Possible Implements TODO List (status: implemented / verified):
-* - [X] Add test cases - implemented and verified (48 offline tests).
+* - [X] Add test cases - implemented and verified by the offline regression suite.
 * - [X] ExtensionTotal get malicious extensions - implemented; verified against the client contract in tests, NOT yet against the live ExtensionTotal API (needs an API key).
 * - [X] crx expand and create json job for cwsstore - pre-existing; re-verified by the cwsbuild tests.
 * - [X] add helm (kubernetes) support - implemented; validated with helm lint/template only, NOT yet deployed to a live cluster.
@@ -154,7 +154,9 @@ default), `--syncall` (force re-download of everything).
 
 Drop a `specified.json` into the artifacts directory to mirror extensions
 beyond the recommended list. Same format as `recommended_extensions.json`
-(objects with `id` and `name`, or plain ID strings). Manual entries override
+(objects with `id` and `name`, or plain ID strings). Optional `tags`,
+`origin` and `description` fields are documented in the
+[store guide](cwsoffline/cwsstore/README.md). Manual entries override
 recommended ones with the same ID.
 
 ### Malicious extensions
@@ -175,7 +177,7 @@ python -m pytest tests/ -v
 ```
 
 The suite is fully offline: HTTP calls are mocked and the two CRX files under
-`cwsoffline/cwsstore/app/static/extensions/` serve as fixtures.
+`tests/fixtures/` serve as fixtures.
 
 ## Kubernetes (Helm)
 
@@ -187,3 +189,9 @@ Deploys shared artifacts/assets PVCs, the cwssync Deployment, a cwsbuild hook
 Job and the cwsstore Deployment + Service. For an air-gapped cluster, set
 `cwssync.enabled=false` and populate the artifacts PVC externally. See
 `helm/offlinechromewebstore/values.yaml` for all options.
+
+Pull requests and main pushes run `.github/workflows/verify.yaml`: Python and
+frontend tests, dependency audit, reproducible frontend build, and actual Docker
+image builds plus a containerized fixture build/download smoke test. This
+workflow never publishes images or calls a live extension risk service. Passing
+local unit tests is not evidence that the Docker job has passed.

@@ -8,14 +8,18 @@
 <div class="extensions-grid" id="extensionsGrid">
     {% for extension in extensions %}
     <article class="extension-card" data-name="{{ extension.name.lower() }}" data-description="{{ extension.description.lower() }}" data-id="{{ extension.extension_id }}">
-        <a class="card-main" href="/extension/{{ extension.extension_id }}">
+        <a class="card-main" href="/classic/extension/{{ extension.extension_id }}">
             <img class="extension-icon" src="/{{ extension.image_path_url }}" alt="" loading="lazy" width="48" height="48">
             <div class="card-text">
                 <div class="card-title-row">
                     <h2 class="extension-name">{{ extension.name }}</h2>
                     <span class="version-badge">v{{ extension.versions[0].version }}</span>
+                    {% if extension.origin %}<span class="origin-badge origin-{{ extension.origin }}">{{ {"in-house": "In-house", "webstore": "Web Store", "local": "Local"}.get(extension.origin, extension.origin) }}</span>{% endif %}
                 </div>
                 <p class="extension-description">{{ extension.description }}</p>
+                {% if extension.tags %}
+                <p class="card-tags">{% for tag in extension.tags %}<span class="card-tag">{{ tag }}</span>{% endfor %}</p>
+                {% endif %}
                 <p class="extension-id">{{ extension.extension_id }}</p>
             </div>
         </a>

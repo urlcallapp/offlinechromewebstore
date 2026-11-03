@@ -12,6 +12,8 @@ import json
 import logging
 import os
 import re
+import shutil
+import tempfile
 import zipfile
 
 from packaging.version import InvalidVersion, Version
@@ -29,6 +31,14 @@ MALICIOUS_LIST_FILE = os.environ.get(
     "CWS_MALICIOUS_LIST_FILE", os.path.join(ARTIFACTS_DIR, "malicious_extensions.json")
 )
 
+# Display metadata (tags, origin, description overrides) resolved by cwssync
+# from the store source definitions. Storefront taxonomy only; unrelated to
+# the malicious blocklist.
+EXTENSION_METADATA_FILE = os.environ.get(
+    "CWS_EXTENSION_METADATA_FILE",
+    os.path.join(ARTIFACTS_DIR, "extension_metadata.json"),
+)
+
 
 def load_malicious_ids(path=None):
     """IDs on the malicious extension list; empty set when no list exists."""
@@ -41,6 +51,18 @@ def load_malicious_ids(path=None):
         item["id"] if isinstance(item, dict) else item
         for item in data
         if item
+    }
+
+
+def load_extension_metadata(path=None):
+    """Display metadata per extension ID written by cwssync; empty when absent."""
+    path = path or EXTENSION_METADATA_FILE
+    if not os.path.exists(path):
+        return {}
+    with open(path, "r") as handle:
+        data = json.load(handle)
+    return {
+        ext_id: metadata for ext_id, metadata in data.items() if isinstance(metadata, dict)
     }
 
 
@@ -88,7 +110,9 @@ def resolve_icon(manifest, dest_path, extension_id):
         sizes = []
     for size in sizes:
         relative = icons[size].lstrip("/")
-        if os.path.exists(os.path.join(dest_path, relative)):
+        root = os.path.realpath(dest_path)
+        candidate = os.path.realpath(os.path.join(root, relative))
+        if candidate.startswith(root + os.sep) and os.path.isfile(candidate):
             return f"assets/{extension_id}/{relative}"
     return FALLBACK_ICON_URL
 
@@ -124,6 +148,12 @@ def build_index(src_folder=None, dest_folder=None, artifacts_dir=None):
     artifacts_dir = artifacts_dir or ARTIFACTS_DIR
 
     extensions = {}
+    extension_metadata = load_extension_metadata(
+        os.environ.get(
+            "CWS_EXTENSION_METADATA_FILE",
+            os.path.join(artifacts_dir or ARTIFACTS_DIR, "extension_metadata.json"),
+        )
+    )
     malicious_path = os.environ.get(
         "CWS_MALICIOUS_LIST_FILE", os.path.join(artifacts_dir, "malicious_extensions.json")
     )
@@ -144,28 +174,41 @@ def build_index(src_folder=None, dest_folder=None, artifacts_dir=None):
                 logger.info("Skipping malicious extension: %s", file_id)
                 continue
 
-            dest_path = os.path.join(dest_folder, file_id)
-            os.makedirs(dest_path, exist_ok=True)
-            try:
-                manifest = extract_crx(crx_path, dest_path)
-            except (zipfile.BadZipFile, ValueError, KeyError) as exc:
-                logger.error("Skipping unreadable CRX %s: %s", crx_path, exc)
-                continue
-
-            version = manifest.get("version") or file_version
-            entry = extensions.setdefault(
-                file_id,
-                {
-                    "name": resolve_name(manifest, file_name or file_id),
-                    "extension_id": file_id,
-                    "description": resolve_description(manifest),
-                    "image_path_url": resolve_icon(manifest, dest_path, file_id),
-                    "versions": [],
-                },
-            )
-            entry["versions"].append(
-                {"version": version, "path_url": _artifacts_url(crx_path, artifacts_dir)}
-            )
+            # Inspect each version in isolation. Only the newest valid package
+            # supplies display metadata and assets; old files cannot overwrite
+            # its icons or leave stale extracted files behind.
+            os.makedirs(dest_folder, exist_ok=True)
+            with tempfile.TemporaryDirectory(dir=dest_folder) as staging:
+                try:
+                    manifest = extract_crx(crx_path, staging)
+                    version = manifest.get("version") or file_version
+                    if not version:
+                        raise ValueError("missing version")
+                except (zipfile.BadZipFile, ValueError, KeyError, OSError) as exc:
+                    logger.error("Skipping unreadable CRX %s: %s", crx_path, exc)
+                    continue
+                metadata = extension_metadata.get(file_id, {})
+                entry = extensions.get(file_id)
+                newest = not entry or _version_sort_key(version) > _version_sort_key(entry["versions"][0]["version"])
+                if newest:
+                    dest_path = os.path.join(dest_folder, file_id)
+                    if os.path.exists(dest_path):
+                        shutil.rmtree(dest_path)
+                    shutil.copytree(staging, dest_path)
+                    versions = entry["versions"] if entry else []
+                    entry = extensions[file_id] = {
+                        "name": resolve_name(manifest, file_name or file_id),
+                        "extension_id": file_id,
+                        "description": metadata.get("description") or resolve_description(manifest),
+                        "image_path_url": resolve_icon(manifest, dest_path, file_id),
+                        "tags": [str(tag) for tag in metadata.get("tags", [])],
+                        "origin": metadata.get("origin") or "local",
+                        "versions": versions,
+                    }
+                entry["versions"].append(
+                    {"version": version, "path_url": _artifacts_url(crx_path, artifacts_dir)}
+                )
+                entry["versions"].sort(key=lambda item: _version_sort_key(item["version"]), reverse=True)
             logger.info("Indexed %s %s", file_id, version)
 
     for entry in extensions.values():

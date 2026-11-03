@@ -57,3 +57,11 @@ USER_AGENT = os.environ.get(
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
 )
+
+# Sync output: display metadata (tags and origin) for the extensions in the
+# store, consumed by cwsbuild when it writes extensions_info.json. This is
+# storefront taxonomy, not a security verdict: the malicious blocklist lives
+# in malicious_extensions.json and is enforced separately.
+EXTENSION_METADATA_FILE = os.environ.get(
+    "CWS_EXTENSION_METADATA_FILE", os.path.join(ARTIFACTS_DIR, "extension_metadata.json")
+)

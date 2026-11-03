@@ -12,7 +12,7 @@ UPDATECHECK_REQUEST = f"""<?xml version="1.0" encoding="UTF-8"?>
 
 
 def test_homepage_lists_extensions(store_client, built_index):
-    response = store_client.get("/")
+    response = store_client.get("/classic")
     assert response.status_code == 200
     assert "Tampermonkey" in response.text
     assert "Google Translate" in response.text
@@ -122,3 +122,41 @@ def test_crx_feed_has_ok_statuses(store_client, built_index):
     assert text.startswith("<?xml")
     assert f'<app appid="{TAMPERMONKEY_ID}" status="ok">' in text
     assert '<updatecheck status="ok" codebase=' in text
+
+
+def test_internal_artifact_files_not_public(store_client, artifact_tree):
+    from pathlib import Path
+    for name in ('specified.json', 'last_sync_report.json', 'extension_metadata.json'):
+        (Path(artifact_tree['artifacts']) / name).write_text('{"private": true}')
+        assert store_client.get('/artifacts/' + name).status_code == 404
+
+
+def test_blocklist_normalization_and_symlink_aliases(blocked_store_client, artifact_tree):
+    from pathlib import Path
+    root = Path(artifact_tree['artifacts'])
+    clean = root / 'extensions' / TRANSLATE_ID
+    blocked = root / 'extensions' / TAMPERMONKEY_ID
+    (clean / 'alias.crx').symlink_to(next(blocked.rglob('*.crx')))
+    assert blocked_store_client.get(f'/artifacts/extensions/{TRANSLATE_ID}/alias.crx').status_code == 404
+    assert blocked_store_client.get(
+        f'/artifacts/extensions/{TRANSLATE_ID}/..%2F{TAMPERMONKEY_ID}/5.3.3/'
+        f'{TAMPERMONKEY_ID}_Tampermonkey_5.3.3.crx'
+    ).status_code == 404
+
+
+def test_fixture_crxs_are_not_served(blocked_store_client):
+    assert blocked_store_client.get(f'/static/extensions/{TAMPERMONKEY_ID}.crx').status_code == 404
+
+
+def test_download_cannot_escape_artifact_root(store_client, artifact_tree, built_index, tmp_path):
+    from pathlib import Path
+    secret = tmp_path / 'secret.crx'
+    secret.write_text('not public')
+    built_index[0]['versions'][0]['path_url'] = str(secret)
+    (Path(artifact_tree['artifacts']) / 'extensions_info.json').write_text(json.dumps(built_index))
+    assert store_client.get('/download/' + built_index[0]['extension_id']).status_code == 404
+
+
+def test_crx_feed_multiple_get_appids(store_client, built_index):
+    response = store_client.get('/crx', params=[('x', f'id={TAMPERMONKEY_ID}&uc'), ('x', f'id={TRANSLATE_ID}&uc')])
+    assert TAMPERMONKEY_ID in response.text and TRANSLATE_ID in response.text
