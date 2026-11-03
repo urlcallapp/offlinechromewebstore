@@ -1,42 +1,49 @@
-<!DOCTYPE html>
-<html lang="en" data-theme="light">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ extension.name }} - Offline Chrome Web Store</title>
-    <link rel="stylesheet" href="/static/css/styles.css">
-    <link rel="icon" href="/static/images/favicon_48px.png" sizes="48x48">
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1><a href="/">Offline Chrome Web Store</a></h1>
-        </header>
-        <main>
-            <section class="extension-details">
-                <div class="extension-icon-wrapper">
-                    <img src="/{{ extension.image_path_url }}" alt="{{ extension.name }}" class="extension-icon">
-                </div>
-                <h2>{{ extension.name }}</h2>
-                <p><strong>ID:</strong> {{ extension.extension_id }}</p>
-                {% if extension.description %}
-                <p><strong>Description:</strong> {{ extension.description }}</p>
-                {% endif %}
-                <h3>Available versions</h3>
-                <ul class="version-list">
-                    {% for version in extension.versions %}
-                    <li>
-                        v{{ version.version }}
-                        <a href="/{{ version.path_url }}" class="download-button">Add to Chrome</a>
-                    </li>
-                    {% endfor %}
-                </ul>
-            </section>
-        </main>
-        <footer>
-            <p>&copy; {{ current_year }} Offline Chrome Web Store</p>
-        </footer>
+{% extends "base.html" %}
+{% block title %}{{ extension.name }} - Offline Chrome Web Store{% endblock %}
+{% block content %}
+<nav class="breadcrumb">
+    <a href="/classic" class="back-link">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M15 18l-6-6 6-6"></path>
+        </svg>
+        All extensions
+    </a>
+</nav>
+<section class="detail-hero">
+    <img class="detail-icon" src="/{{ extension.image_path_url }}" alt="" width="96" height="96">
+    <div class="detail-heading">
+        <div class="card-title-row">
+            <h1>{{ extension.name }}</h1>
+            <span class="version-badge">v{{ extension.versions[0].version }}</span>
+            {% if extension.origin %}<span class="origin-badge origin-{{ extension.origin }}">{{ {"in-house": "In-house", "webstore": "Web Store", "local": "Local"}.get(extension.origin, extension.origin) }}</span>{% endif %}
+        </div>
+        {% if extension.tags %}
+        <p class="card-tags">{% for tag in extension.tags %}<span class="card-tag">{{ tag }}</span>{% endfor %}</p>
+        {% endif %}
+        <p class="extension-id">{{ extension.extension_id }}</p>
+        <a class="btn-primary" href="/download/{{ extension.extension_id }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 3v12"></path><path d="M7 10l5 5 5-5"></path><path d="M4 21h16"></path>
+            </svg>
+            Download .crx
+        </a>
     </div>
-    <script src="/static/js/scripts.js"></script>
-</body>
-</html>
+</section>
+{% if extension.description %}
+<section class="detail-section">
+    <h2>About</h2>
+    <p class="detail-description">{{ extension.description }}</p>
+</section>
+{% endif %}
+<section class="detail-section">
+    <h2>Available versions</h2>
+    <ul class="version-list">
+        {% for version in extension.versions %}
+        <li class="version-row">
+            <span class="version-number">v{{ version.version }}</span>
+            <a class="btn-secondary" href="/{{ version.path_url }}">Download .crx</a>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% endblock %}

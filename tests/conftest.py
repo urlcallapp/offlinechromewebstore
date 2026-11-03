@@ -10,7 +10,7 @@ CWSSYNC_DIR = os.path.join(REPO_ROOT, "cwsoffline", "cwssync")
 CWSBUILD_DIR = os.path.join(REPO_ROOT, "cwsoffline", "cwsbuild")
 CWSSTORE_DIR = os.path.join(REPO_ROOT, "cwsoffline", "cwsstore")
 FIXTURE_CRX_DIR = os.path.join(
-    CWSSTORE_DIR, "app", "static", "extensions"
+    REPO_ROOT, "tests", "fixtures"
 )
 TAMPERMONKEY_ID = "dhdgffkkebhmkfjojejmpbldmpobfkfo"
 TRANSLATE_ID = "aapbdbdomjkkjkaonfhkkikfgjllcleb"

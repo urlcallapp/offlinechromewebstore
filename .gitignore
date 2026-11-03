@@ -173,3 +173,9 @@ cython_debug/
 
 artifacts/
 assets/
+# The React storefront's built bundle is committed on purpose: the Docker
+# bare installs need no npm. Docker rebuilds in its Node stage.
+!cwsoffline/cwsstore/app/static/app/assets/
+!cwsoffline/cwsstore/app/static/app/assets/*
+
+node_modules/
