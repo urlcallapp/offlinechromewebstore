@@ -1,76 +1,169 @@
-import os
-import json
-import zipfile
-import xml.etree.ElementTree as ET
+"""Build cwsstore assets and the extensions_info.json index from mirrored CRX files.
 
-def extract_crx_files(src_folder, dest_folder):
-    extensions_info = []
+Reads CRX packages from the artifacts tree produced by cwssync:
+
+    artifacts/extensions/<extension_id>/<version>/<id>_<name>_<version>.crx
+
+Extracts each package under the assets directory, reads its manifest.json and
+writes artifacts/extensions_info.json consumed by cwsstore. Multiple versions
+of the same extension are merged into one entry, newest first.
+"""
+import json
+import logging
+import os
+import re
+import zipfile
+
+from packaging.version import InvalidVersion, Version
+
+logger = logging.getLogger(__name__)
+
+EXTENSION_ID_PATTERN = re.compile(r"^[a-p]{32}$")
+# Root-relative fallback icon served by cwsstore's static files.
+FALLBACK_ICON_URL = "static/images/icon_144px_blank.png"
+
+ARTIFACTS_DIR = os.environ.get("CWS_ARTIFACTS_DIR", "artifacts")
+ASSETS_DIR = os.environ.get("CWS_ASSETS_DIR", "assets")
+
+
+def is_valid_extension_id(value):
+    return bool(EXTENSION_ID_PATTERN.match(value or ""))
+
+
+def parse_crx_filename(filename):
+    """Best-effort parse of '<id>_<name>_<version>.crx' or '<id>.crx'."""
+    stem = os.path.splitext(os.path.basename(filename))[0]
+    parts = stem.split("_")
+    extension_id = parts[0]
+    name = parts[1].replace("-", " ") if len(parts) > 2 else ""
+    version = parts[2] if len(parts) > 2 else (parts[1] if len(parts) == 2 else "")
+    return extension_id, name, version
+
+
+def _is_i18n_placeholder(value):
+    return not value or (value.startswith("__MSG_") and value.endswith("__"))
+
+
+def resolve_name(manifest, fallback):
+    """Pick a displayable name, skipping __MSG_*__ i18n placeholders."""
+    for candidate in (
+        manifest.get("name"),
+        manifest.get("action", {}).get("default_title"),
+        fallback,
+    ):
+        if candidate and not _is_i18n_placeholder(candidate):
+            return candidate
+    return fallback
+
+
+def resolve_description(manifest):
+    description = manifest.get("description", "")
+    return "" if _is_i18n_placeholder(description) else description
+
+
+def resolve_icon(manifest, dest_path, extension_id):
+    """Return the root-relative URL of the largest icon that exists on disk."""
+    icons = manifest.get("icons", {})
+    try:
+        sizes = sorted(icons.keys(), key=int, reverse=True)
+    except ValueError:
+        sizes = []
+    for size in sizes:
+        relative = icons[size].lstrip("/")
+        if os.path.exists(os.path.join(dest_path, relative)):
+            return f"assets/{extension_id}/{relative}"
+    return FALLBACK_ICON_URL
+
+
+def _version_sort_key(version_string):
+    try:
+        return Version(version_string)
+    except InvalidVersion:
+        return Version("0")
+
+
+def extract_crx(crx_path, dest_path):
+    """Extract a CRX (which is a ZIP with a header) and return its manifest."""
+    with zipfile.ZipFile(crx_path, "r") as archive:
+        archive.extractall(dest_path)
+    manifest_path = os.path.join(dest_path, "manifest.json")
+    if not os.path.exists(manifest_path):
+        raise ValueError(f"manifest.json missing in {crx_path}")
+    with open(manifest_path, "r") as handle:
+        return json.load(handle)
+
+
+def _artifacts_url(crx_path, artifacts_dir):
+    """Root-relative URL under the store's /artifacts mount, forward slashes."""
+    relative = os.path.relpath(crx_path, artifacts_dir)
+    return "artifacts/" + relative.replace(os.sep, "/")
+
+
+def build_index(src_folder=None, dest_folder=None, artifacts_dir=None):
+    """Walk the artifacts tree and return the extensions_info index list."""
+    src_folder = src_folder or os.path.join(artifacts_dir or ARTIFACTS_DIR, "extensions")
+    dest_folder = dest_folder or ASSETS_DIR
+    artifacts_dir = artifacts_dir or ARTIFACTS_DIR
+
+    extensions = {}
 
     for root, _, files in os.walk(src_folder):
-        for file in files:
-            if file.endswith('.crx'):
-                crx_path = os.path.join(root, file)
-                extension_id = os.path.splitext(file)[0]
-                print(f"extension_id: {extension_id}")
-                dest_path = os.path.join(dest_folder, extension_id)
-                os.makedirs(dest_path, exist_ok=True)
+        for file in sorted(files):
+            if not file.endswith(".crx"):
+                continue
+            crx_path = os.path.join(root, file)
+            file_id, file_name, file_version = parse_crx_filename(file)
+            if not is_valid_extension_id(file_id):
+                logger.warning("Skipping file with unexpected name: %s", crx_path)
+                continue
 
-                with zipfile.ZipFile(crx_path, 'r') as zip_ref:
-                    zip_ref.extractall(dest_path)
+            dest_path = os.path.join(dest_folder, file_id)
+            os.makedirs(dest_path, exist_ok=True)
+            try:
+                manifest = extract_crx(crx_path, dest_path)
+            except (zipfile.BadZipFile, ValueError, KeyError) as exc:
+                logger.error("Skipping unreadable CRX %s: %s", crx_path, exc)
+                continue
 
-                manifest_path = os.path.join(dest_path, 'manifest.json')
-                if os.path.exists(manifest_path):
-                    with open(manifest_path, 'r') as manifest_file:
-                        manifest_data = json.load(manifest_file)
-                        ext_name = manifest_data.get('name', '')
-                        ext_name = manifest_data.get('action', {}).get('default_title','') if '_' in ext_name else ext_name
-                        ext_name = extension_id.split('_')[1] if ext_name == "" else ext_name
-                        #print(manifest_data.get('icons', {}).get('128', ''))
+            version = manifest.get("version") or file_version
+            entry = extensions.setdefault(
+                file_id,
+                {
+                    "name": resolve_name(manifest, file_name or file_id),
+                    "extension_id": file_id,
+                    "description": resolve_description(manifest),
+                    "image_path_url": resolve_icon(manifest, dest_path, file_id),
+                    "versions": [],
+                },
+            )
+            entry["versions"].append(
+                {"version": version, "path_url": _artifacts_url(crx_path, artifacts_dir)}
+            )
+            logger.info("Indexed %s %s", file_id, version)
 
-                        try:
-                            icons = manifest_data.get('icons', {})
-                                             
-                            #for s,ico_path in icons:
-                            sorted_keys = sorted(icons.keys(), key=int, reverse=True)
-                            # Iterate from biggest to smallest and find the first existing file
-                            for key in sorted_keys:
-                                image = os.path.join(dest_path, icons[key].lstrip('/'))
-                                break
-                            else:
-                                image = os.path.join(dest_path, "icon.png")
-                        except:
-                            print("No icons found in manifest, using default icon.png")
-                            image = os.path.join(dest_path, "icon.png")
-                            
-                        #image = os.path.join(dest_path, manifest_data.get('icons', {}).get('128', '').lstrip('/')) if manifest_data.get('icons', {}).get('128', '') != "" else os.path.join(dest_path, "icon.png")                        
+    for entry in extensions.values():
+        entry["versions"].sort(
+            key=lambda item: _version_sort_key(item["version"]), reverse=True
+        )
+    return sorted(extensions.values(), key=lambda item: item["name"].lower())
 
-                        print(f"image_path: {image}")
-
-                        extension_info = {
-                            'name': ext_name,
-                            #'name': manifest_data.get('action', {}).get('default_title',''),
-                            #'name': manifest_data.get('name', ''),
-                            'extension_id': extension_id.split('_')[0],
-                            #'description': manifest_data.get('description', ''),
-                            'description': manifest_data.get('description', '') if '_' not in manifest_data.get('description', '') else '',
-                            'image_path_url': image,
-                            'versions': [{'version': manifest_data.get('version', ''), 'path_url': crx_path}]
-                        }
-                        extensions_info.append(extension_info)
-
-    return extensions_info
 
 def save_extensions_info(extensions_info, output_file):
-    with open(output_file, 'w') as json_file:
+    os.makedirs(os.path.dirname(output_file) or ".", exist_ok=True)
+    with open(output_file, "w") as json_file:
         json.dump(extensions_info, json_file, indent=4)
+    logger.info("Wrote %s (%d extensions)", output_file, len(extensions_info))
+
+
+def main():
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+    )
+    extensions_info = build_index()
+    save_extensions_info(
+        extensions_info, os.path.join(ARTIFACTS_DIR, "extensions_info.json")
+    )
 
 
 if __name__ == "__main__":
-    artifacts_folder = 'artifacts'
-    src_folder = 'artifacts/extensions'
-    dest_folder = 'assets'
-    output_json_file = 'extensions_info.json'
-    output_xml_file = 'extensions_info.xml'
-
-    extensions_info = extract_crx_files(src_folder, dest_folder)
-    save_extensions_info(extensions_info, os.path.join(artifacts_folder, output_json_file))
+    main()

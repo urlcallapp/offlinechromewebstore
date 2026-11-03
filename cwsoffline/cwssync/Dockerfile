@@ -2,9 +2,10 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY cwsoffline/cwssync/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+COPY cwsoffline/cwssync/cwssync ./cwssync
 COPY cwsoffline/cwssync/extension_sync.py .
 COPY cwsoffline/cwssync/recommended_extensions.json .
 

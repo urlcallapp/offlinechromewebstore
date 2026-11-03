@@ -1,0 +1,4 @@
+requests>=2.31,<3
+schedule>=1.2,<2
+beautifulsoup4>=4.12
+packaging>=23
