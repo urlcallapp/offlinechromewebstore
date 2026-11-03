@@ -4,7 +4,7 @@ description: |-
   Offline Chrome Web Store: mirror Chrome extensions with cwssync, build the
   catalog with cwsbuild and serve a private store + update feed with cwsstore.
 type: application
-version: 0.3.0
+version: 0.4.0
 appVersion: "1.0.0"
 keywords:
   - chrome

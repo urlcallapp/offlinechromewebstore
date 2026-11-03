@@ -2,3 +2,9 @@ fastapi>=0.110,<1.0
 uvicorn[standard]>=0.29
 jinja2>=3.1
 aiofiles>=23
+
+# Separate central-auth gateway (store uses only offline signed assertions).
+itsdangerous>=2.2,<3
+authlib>=1.9.3,<2
+httpx>=0.28,<1
+ldap3>=2.9.1,<3

@@ -16,6 +16,23 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Offline Chrome Web Store")
 
+# SSO protects browsing at the backend too. Chrome machine routes stay public.
+@app.middleware("http")
+async def private_store_boundary(request: Request, call_next):
+    mode = os.environ.get("CWS_STORE_ACCESS", "anonymous")
+    if mode not in {"anonymous", "users-only"}:
+        return JSONResponse({"error": "Invalid store access mode"}, status_code=503)
+    from app.access_paths import machine_request
+    if mode == "users-only" and not machine_request(request.method, request.url.path):
+        from app.admin_access import require_admin
+        from fastapi import HTTPException
+        try:
+            await require_admin(request)
+        except HTTPException as exc:
+            return JSONResponse({"error": exc.detail}, status_code=exc.status_code)
+    return await call_next(request)
+
+
 templates = Jinja2Templates(directory="app/templates")
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -85,3 +102,7 @@ async def classic_storefront(request: Request):
 
 from app.routes.admin import router as admin_router
 app.include_router(admin_router)
+
+@app.get('/auth/login', response_class=HTMLResponse)
+async def no_gateway_login():
+    return HTMLResponse('<h1>Central login is not configured on this address</h1><p>Use your organization\'s auth gateway URL, or ask the deployment administrator to configure LDAP/SSO.</p>', status_code=503)

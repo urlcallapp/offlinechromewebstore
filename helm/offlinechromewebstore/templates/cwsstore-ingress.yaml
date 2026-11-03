@@ -2,7 +2,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "ocws.fullname" . }}-cwsstore
+  name: {{ include "ocws.fullname" . }}-{{ if .Values.auth.enabled }}cwsauth{{ else }}cwsstore{{ end }}
   labels:
     {{- include "ocws.labels" . | nindent 4 }}
 spec:
@@ -21,7 +21,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ include "ocws.fullname" . }}-cwsstore
+                name: {{ include "ocws.fullname" . }}-{{ if .Values.auth.enabled }}cwsauth{{ else }}cwsstore{{ end }}
                 port:
                   name: http
 {{- end }}
