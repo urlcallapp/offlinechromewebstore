@@ -1,21 +1,63 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Offline Chrome Web Store{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}">
-    <script src="{{ url_for('static', path='js/scripts.js') }}" defer></script>
+    <link rel="icon" href="{{ url_for('static', path='images/favicon_48px.png') }}" sizes="48x48">
+    <link rel="icon" href="{{ url_for('static', path='images/favicon_96px.png') }}" sizes="96x96">
+    <link rel="icon" href="{{ url_for('static', path='images/favicon_144px.png') }}" sizes="144x144">
+    <script>
+        // Apply the saved or OS-preferred theme before first paint to avoid a flash.
+        (function () {
+            var saved = null;
+            try { saved = localStorage.getItem('theme'); } catch (e) { /* private mode */ }
+            var theme = saved || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
 </head>
 <body>
-    <header>
-        <h1><a href="/">Offline Chrome Web Store</a></h1>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+        <div class="header-inner">
+            <a class="brand" href="/">
+                <img class="brand-icon" src="{{ url_for('static', path='images/favicon.png') }}" alt="">
+                <span class="brand-name">Offline Chrome Web Store</span>
+            </a>
+            <div class="search-box" role="search">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="11" cy="11" r="7"></circle>
+                    <line x1="16.5" y1="16.5" x2="21" y2="21"></line>
+                </svg>
+                <input id="searchInput" type="search" placeholder="Search extensions" aria-label="Search extensions" autocomplete="off" spellcheck="false">
+                <kbd class="search-hint" aria-hidden="true">/</kbd>
+            </div>
+            <button id="themeToggle" class="theme-toggle" type="button" aria-label="Switch theme">
+                <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="4"></circle>
+                    <line x1="12" y1="2" x2="12" y2="5"></line>
+                    <line x1="12" y1="19" x2="12" y2="22"></line>
+                    <line x1="2" y1="12" x2="5" y2="12"></line>
+                    <line x1="19" y1="12" x2="22" y2="12"></line>
+                    <line x1="4.9" y1="4.9" x2="7" y2="7"></line>
+                    <line x1="17" y1="17" x2="19.1" y2="19.1"></line>
+                    <line x1="4.9" y1="19.1" x2="7" y2="17"></line>
+                    <line x1="17" y1="7" x2="19.1" y2="4.9"></line>
+                </svg>
+                <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"></path>
+                </svg>
+            </button>
+        </div>
     </header>
-    <main>
+    <main class="page-content" id="main">
         {% block content %}{% endblock %}
     </main>
-    <footer>
-        <p>&copy; {{ current_year }} Offline Chrome Web Store</p>
+    <footer class="site-footer">
+        <p>Offline Chrome Web Store &middot; self-hosted mirror &middot; <a href="https://github.com/ronel99/offlinechromewebstore">GitHub</a></p>
     </footer>
+    <script src="{{ url_for('static', path='js/scripts.js') }}" defer></script>
 </body>
 </html>
