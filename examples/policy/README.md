@@ -1,6 +1,6 @@
 # Offline Chrome policy exports
 
-Open `/admin` on your local store for a read-only policy builder. Select a store
+Open `/admin` on your local store for a policy export builder and separate CRX upload intake. Select a store
 origin reachable by managed clients, choose the default explicitly, and select
 extensions/modes. Preview before downloading:
 
@@ -25,8 +25,8 @@ the store runs with `CWS_INTAKE_DIR` set (the Docker images and Helm chart set
 it to a dedicated intake volume). Uploads are checked for CRX structure,
 manifest version shape and the malicious blocklist, then land in the intake
 directory only. Structure is not authenticity: upload only packages you trust.
-The next `cwsbuild` run revalidates and moves staged files into
-`artifacts/extensions/<id>/<version>/`, so they index, serve and update like
+The next `cwsbuild` run revalidates and atomically copies staged files into
+`artifacts/extensions/<id>/<version>/`, then removes their intake copies, so they index, serve and update like
 synced packages. The store never writes to the artifacts or assets trees.
 
 ## Extension managed policy
@@ -34,7 +34,7 @@ synced packages. The store never writes to the artifacts or assets trees.
 The spec's optional `extension_policies` object (`{"<id>": {...values...}}`)
 sets an extension's own managed configuration, validated against the
 `storage.managed_schema` declared in that extension's built manifest. Types,
-enums, required keys and closed objects are enforced; values for extensions
+enums, required keys and closed objects are enforced; top-level policy names must be declared. Recursive `$ref` schemas are refused by this exporter; values for extensions
 without a declared schema are refused. Values land under
 `HKLM\Software\Policies\Google\Chrome\3rdparty\extensions\<id>\policy`
 in the .reg/PowerShell exports and under `3rdparty.extensions` in the Linux

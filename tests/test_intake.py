@@ -91,3 +91,27 @@ def test_intake_unconfigured(store_client):
     assert store_client.post('/api/admin/intake/upload', content=b'x',
                              headers={'Content-Type': 'application/octet-stream'}).status_code == 503
     assert store_client.get('/api/admin/intake').json() == {'configured': False, 'uploads': []}
+
+
+def test_all_intake_routes_require_backend_assertions(intake_client):
+    from fastapi.testclient import TestClient
+    from app.main import app
+    raw = TestClient(app)
+    for method, path in [('GET', '/api/admin/intake'),
+                         ('POST', '/api/admin/intake/upload'),
+                         ('DELETE', f'/api/admin/intake/{key_id()}/2.1')]:
+        assert raw.request(method, path).status_code == 403
+
+
+def test_upload_ignores_client_filename(intake_client, tmp_path):
+    response = intake_client.post('/api/admin/intake/upload', content=crx3(archive()),
+        headers={'Content-Type': 'application/octet-stream',
+                 'Content-Disposition': 'attachment; filename="../../outside.crx"'})
+    assert response.status_code == 200
+    assert response.json()['staged']['filename'].startswith(key_id() + '_')
+    assert not (tmp_path / 'outside.crx').exists()
+
+
+@pytest.mark.parametrize('version', ['65536', '1.99999'])
+def test_upload_version_component_range(intake_client, version):
+    assert upload(intake_client, crx3(archive(version=version))).status_code == 422

@@ -362,6 +362,7 @@ def consume_intake(intake_dir=None, artifacts_dir=None):
     if not intake_dir or not os.path.isdir(intake_dir):
         return 0
     consumed = 0
+    blocked = load_malicious_ids(os.environ.get("CWS_MALICIOUS_LIST_FILE", os.path.join(artifacts_dir, "malicious_extensions.json")))
     for root, _, files in os.walk(intake_dir):
         for filename in sorted(files):
             if not filename.endswith(".crx"):
@@ -370,15 +371,35 @@ def consume_intake(intake_dir=None, artifacts_dir=None):
             try:
                 if not UPLOAD_FILENAME.fullmatch(filename):
                     raise ValueError("unsafe filename")
+                if os.path.islink(source):
+                    raise ValueError("symlink intake packages are refused")
                 extension_id = read_crx_id(source)
+                if extension_id in blocked:
+                    raise ValueError("extension is now blocklisted")
                 with tempfile.TemporaryDirectory() as staging:
                     manifest = extract_crx(source, staging)
                 version = manifest.get("version")
-                if not isinstance(version, str) or not UPLOAD_VERSION.fullmatch(version):
+                if not isinstance(version, str) or not UPLOAD_VERSION.fullmatch(version) or any(int(n) > 65535 for n in version.split(".")):
                     raise ValueError(f"invalid manifest version {version!r}")
                 target_dir = os.path.join(artifacts_dir, "extensions", extension_id, version)
                 os.makedirs(target_dir, exist_ok=True)
-                shutil.move(source, os.path.join(target_dir, filename))
+                # Intake and artifacts may be different volumes: copy atomically
+                # into the target directory, then remove the staged source.
+                handle, temp_path = tempfile.mkstemp(dir=target_dir, prefix=".intake-")
+                try:
+                    with os.fdopen(handle, "wb") as out, open(source, "rb") as inp:
+                        shutil.copyfileobj(inp, out)
+                    os.replace(temp_path, os.path.join(target_dir, filename))
+                except BaseException:
+                    try:
+                        os.unlink(temp_path)
+                    except OSError:
+                        pass
+                    raise
+                try:
+                    os.unlink(source)
+                except OSError:
+                    logger.warning("Consumed %s but could not remove it from intake; it will be re-consumed (idempotent) next build", source)
                 consumed += 1
                 logger.info("Consumed uploaded extension %s %s", extension_id, version)
             except (ValueError, OSError, zipfile.BadZipFile, KeyError) as exc:

@@ -19,9 +19,9 @@ services:
       dockerfile: ./Dockerfile
     image: cwsstore
     volumes:
-      - ./artifacts:/store/artifacts
+      - ./artifacts:/store/artifacts:ro
       - ./intake:/store/intake
-      - ./assets:/store/assets
+      - ./assets:/store/assets:ro
     ports:
       - "8005:8005"
     stdin_open: true

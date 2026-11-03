@@ -40,7 +40,8 @@ def load_managed_schema(assets_dir, extension_id):
             manifest = json.load(handle)
     except (OSError, json.JSONDecodeError) as exc:
         raise SchemaError(f"Extension {extension_id} has no readable manifest") from exc
-    schema_rel = manifest.get("storage.managed_schema")
+    storage = manifest.get("storage", {})
+    schema_rel = storage.get("managed_schema") if isinstance(storage, dict) else None
     if not isinstance(schema_rel, str) or not schema_rel:
         raise SchemaError(f"Extension {extension_id} declares no storage.managed_schema; managed policy values are refused")
     schema_path = os.path.realpath(os.path.join(extension_dir, schema_rel))
@@ -66,6 +67,8 @@ def _check(schema, value, path, ignored, depth):
         raise ValueError(f"{path or 'policy'}: nesting beyond {MAX_DEPTH} levels")
     if not isinstance(schema, dict):
         raise SchemaError(f"{path or 'schema'}: subschema must be an object")
+    if "$ref" in schema:
+        raise SchemaError(f"{path or 'schema'}: $ref schemas are not supported by this exporter")
     ignored.update(key for key in schema if key in IGNORED_KEYWORDS)
     declared = schema.get("type")
     if declared not in TYPES:
@@ -92,7 +95,7 @@ def _check(schema, value, path, ignored, depth):
         for name in schema.get("required", []):
             if name not in value:
                 raise ValueError(f"{path or 'policy'}: missing required key {name!r}")
-        additional = schema.get("additionalProperties", True)
+        additional = schema.get("additionalProperties", True) if path else False
         for name, item in value.items():
             child = f"{path}.{name}" if path else name
             if properties and name in properties:
@@ -129,12 +132,16 @@ def registry_entries(extension_id, values):
     entries = []
     for name in sorted(values):
         value = values[name]
+        if not isinstance(name, str) or not name or any(c in name for c in '\\\r\n\x00'):
+            raise ValueError("Policy names must be nonempty and cannot contain registry path/control characters")
+        if isinstance(value, str) and any(c in value for c in "\r\n\x00"):
+            raise ValueError(f"{name}: multiline/control-character registry strings are unsupported")
         if isinstance(value, bool):
             entries.append((name, "dword", int(value)))
         elif isinstance(value, int):
             if not -(2**31) <= value < 2**31:
                 raise ValueError(f"{name}: integer outside the 32-bit registry range")
-            entries.append((name, "dword", value))
+            entries.append((name, "dword", value & 0xffffffff))
         elif isinstance(value, str):
             entries.append((name, "sz", value))
         else:
