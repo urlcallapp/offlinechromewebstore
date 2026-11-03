@@ -42,6 +42,7 @@ def test_users_only_guards_all_backend_bytes(store_client, built_index, monkeypa
 @pytest.fixture
 def gateway(tmp_path, monkeypatch):
     monkeypatch.syspath_prepend(CWSSTORE_DIR)
+    monkeypatch.chdir(CWSSTORE_DIR)
     key = tmp_path / 'key'; key.write_text('test-only-long-secret-' * 3)
     password = tmp_path / 'password'; password.write_text('test-service-bind-password')
     conf = {'origin': 'https://store.test', 'upstream': 'http://127.0.0.1:8005', 'access': 'anonymous',
@@ -308,3 +309,231 @@ def test_gateway_factory_runs_in_fresh_process(gateway):
         assert httpx.get(f'http://127.0.0.1:{port}/api/admin/policy/export').status_code==401
     finally:
         process.terminate();process.communicate(timeout=5)
+
+
+def test_session_config_and_nested_ldap_validation(gateway):
+    _, _, cfg, path = gateway
+    from auth_gateway.main import create_app
+    for change in [{'session': {'backend': 'signed'}}, {'session': {'idle_ttl_seconds': 30}},
+                   {'session': {'max_ttl_seconds': 60}}, {'session': 'signed'},
+                   {'session': {'max_stale_seconds': 10}},
+                   {'oidc': {'issuer': 'https://idp.test', 'client_id': 'store', 'admin_groups': ['admins'], 'refresh': 'maybe'}},
+                   {'ldap': {'host': 'ldap.test', 'base_dn': 'dc=test', 'bind_dn': 'cn=search,dc=test',
+                             'admin_group_dn': 'cn=admins,dc=test', 'nested_groups': {'max_depth': 99}}},
+                   {'ldap': {'host': 'ldap.test', 'base_dn': 'dc=test', 'bind_dn': 'cn=search,dc=test',
+                             'admin_group_dn': 'cn=admins,dc=test', 'nested_groups': {'enabled': 'yes'}}}]:
+        broken = dict(cfg);broken.update(change);path.write_text(json.dumps(broken))
+        with pytest.raises((ValueError, KeyError)):
+            create_app()
+    good = dict(cfg);good['session'] = {'idle_ttl_seconds': 900, 'max_ttl_seconds': 28800, 'max_stale_seconds': 3600}
+    good['ldap'] = dict(cfg['ldap'], nested_groups={'enabled': True, 'max_depth': 3, 'max_groups': 32})
+    path.write_text(json.dumps(good))
+    create_app()
+
+
+def directory_service(user_dn, graph, member_of=()):
+    """Mock LDAP service: uid search finds the user; member=<dn> searches walk the graph."""
+    from unittest.mock import MagicMock
+    service = MagicMock()
+    def make_entry(dn, memberOf=()):
+        entry = MagicMock();entry.entry_dn = dn;entry.entry_attributes_as_dict = {'memberOf': list(memberOf)}
+        return entry
+    def search(base, filt, **kwargs):
+        if filt.startswith('(uid='):
+            service.entries = [make_entry(user_dn, member_of)]
+        elif filt.startswith('(objectClass=*)'):
+            service.entries = [make_entry(user_dn)]
+        elif filt.startswith('(&(member='):
+            dn = filt.split('member=', 1)[1].split(')')[0]
+            service.entries = [make_entry(group) for group in graph.get(dn, [])]
+        elif ':1.2.840.113556.1.4.1941:=' in filt:
+            service.entries = [make_entry(user_dn)] if graph.get('__chain__') else []
+        else:
+            service.entries = []
+    service.search = search
+    return service
+
+
+def nested_authenticate(cfg, service):
+    from unittest.mock import MagicMock
+    user = MagicMock();user.bound = True
+    with patch('auth_gateway.ldap_auth.Server'), patch('auth_gateway.ldap_auth.Connection') as conn:
+        conn.side_effect = [MagicMock(__enter__=lambda s: service), MagicMock(__enter__=lambda s: user)]
+        from auth_gateway.ldap_auth import authenticate
+        return authenticate(cfg['ldap'], 'alice', 'test-password')
+
+
+def test_ldap_nested_groups_bounded_cycle_safe(gateway):
+    _, _, cfg, _ = gateway
+    user_dn = 'uid=alice,dc=test'
+    cfg['ldap']['nested_groups'] = {'enabled': True}
+    # Direct membership still wins without any traversal.
+    service = directory_service(user_dn, {}, member_of=['cn=admins,dc=test'])
+    assert nested_authenticate(cfg, service) == user_dn
+    # One nesting level: user -> cn=team -> cn=admins.
+    service = directory_service(user_dn, {user_dn: ['cn=team,dc=test'], 'cn=team,dc=test': ['cn=admins,dc=test']})
+    assert nested_authenticate(cfg, service) == user_dn
+    # A group cycle never loops forever and fails closed.
+    cyclic = {user_dn: ['cn=a,dc=test'], 'cn=a,dc=test': ['cn=b,dc=test'], 'cn=b,dc=test': ['cn=a,dc=test']}
+    assert nested_authenticate(cfg, directory_service(user_dn, cyclic)) is None
+    # Chains deeper than max_depth fail closed.
+    deep = {user_dn: ['cn=g1,dc=test'], 'cn=g1,dc=test': ['cn=g2,dc=test'],
+            'cn=g2,dc=test': ['cn=admins,dc=test']}
+    cfg['ldap']['nested_groups'] = {'enabled': True, 'max_depth': 1}
+    assert nested_authenticate(cfg, directory_service(user_dn, deep)) is None
+    # Disabled (default) ignores nested membership.
+    cfg['ldap'].pop('nested_groups')
+    service = directory_service(user_dn, {user_dn: ['cn=team,dc=test'], 'cn=team,dc=test': ['cn=admins,dc=test']})
+    assert nested_authenticate(cfg, service) is None
+
+
+def test_ldap_matching_rule_in_chain(gateway):
+    _, _, cfg, _ = gateway
+    user_dn = 'uid=alice,dc=test'
+    cfg['ldap']['nested_groups'] = {'enabled': True, 'matching_rule_in_chain': True}
+    service = directory_service(user_dn, {'__chain__': True})
+    assert nested_authenticate(cfg, service) == user_dn
+    service = directory_service(user_dn, {})
+    assert nested_authenticate(cfg, service) is None
+
+
+def test_session_idle_sliding_and_absolute_cap(gateway):
+    import time
+    client, app, _, _ = gateway
+    with patch('auth_gateway.main.authenticate', return_value='uid=alice,dc=test'):
+        assert ldap_signin(client).status_code == 303
+    sid = next(iter(app.state.sessions))
+    _, data = app.state.sessions[sid]
+    # Authenticated activity slides the idle expiry forward.
+    app.state.sessions[sid] = (time.time() + 10, data)
+    assert client.get('/auth/session').status_code == 200
+    assert app.state.sessions[sid][0] > time.time() + 800
+    # An idle-expired session ends.
+    app.state.sessions[sid] = (time.time() - 1, data)
+    assert client.get('/auth/session').status_code == 401
+    # The absolute cap ends even an active session.
+    with patch('auth_gateway.main.authenticate', return_value='uid=alice,dc=test'):
+        assert ldap_signin(client).status_code == 303
+    sid = next(iter(app.state.sessions))
+    _, data = app.state.sessions[sid]
+    data['iat'] = time.time() - 90000
+    assert client.get('/auth/session').status_code == 401
+
+
+def test_ldap_membership_recheck_revokes_and_recovers(gateway):
+    client, app, _, _ = gateway
+    with patch('auth_gateway.main.authenticate', return_value='uid=alice,dc=test'):
+        assert ldap_signin(client).status_code == 303
+    with patch('auth_gateway.main.recheck_admin', return_value=True) as recheck:
+        assert client.get('/auth/session').status_code == 200
+        assert recheck.call_count == 0  # Not yet due.
+        for _, data in app.state.sessions.values():
+            data['lr'] = 0
+        assert client.get('/auth/session').status_code == 200
+        assert recheck.call_count == 1
+        for _, data in app.state.sessions.values():
+            data['lr'] = 0
+    # Directory membership lost: the session ends at the refresh interval.
+    with patch('auth_gateway.main.recheck_admin', return_value=False):
+        assert client.get('/auth/session').status_code == 401
+    # Transient directory failure keeps the session and retries soon.
+    with patch('auth_gateway.main.authenticate', return_value='uid=alice,dc=test'):
+        assert ldap_signin(client).status_code == 303
+    for _, data in app.state.sessions.values():
+        data['lr'] = 0
+    with patch('auth_gateway.main.recheck_admin', side_effect=RuntimeError('directory down')):
+        assert client.get('/auth/session').status_code == 200
+    data = list(app.state.sessions.values())[0][1]
+    assert data['lr'] != 0
+
+
+def test_oidc_refresh_rotates_groups_tokens_and_revocation(gateway):
+    from unittest.mock import AsyncMock
+    from authlib.integrations.base_client.errors import OAuthError
+    client, app, _, _ = gateway
+    oc = app.state.oauth.sso
+    metadata = {'issuer': 'https://idp.test', 'token_endpoint': 'https://idp.test/token',
+                'jwks_uri': 'https://idp.test/keys', 'id_token_signing_alg_values_supported': ['RS256']}
+    claims = {'sub': 'alice', 'iss': 'https://idp.test', 'groups': ['admins']}
+    with patch.object(oc, 'load_server_metadata', AsyncMock(return_value={'issuer': 'https://idp.test'})), \
+         patch.object(oc, 'authorize_access_token', AsyncMock(return_value={'id_token': 'ok', 'refresh_token': 'rt1', 'userinfo': claims})):
+        assert client.get('/auth/callback', follow_redirects=False).status_code == 303
+    data = list(app.state.sessions.values())[0][1]
+    assert data['rt'] == 'rt1'
+    with patch.object(oc, 'fetch_access_token', AsyncMock()) as fetch:
+        assert client.get('/auth/session').status_code == 200
+        assert fetch.call_count == 0  # Not yet due.
+    # Refresh: rotated token, downgraded groups take effect immediately.
+    data['lr'] = 0
+    refreshed = {'sub': 'alice', 'iss': 'https://idp.test', 'groups': ['staff']}
+    with patch.object(oc, 'load_server_metadata', AsyncMock(return_value=dict(metadata))), \
+         patch.object(oc, 'fetch_access_token', AsyncMock(return_value={'id_token': 'ok2', 'refresh_token': 'rt2'})) as fetch, \
+         patch.object(oc, 'parse_id_token', AsyncMock(return_value=refreshed)):
+        assert client.get('/auth/session').json()['admin'] is False
+        assert fetch.call_args.kwargs['grant_type'] == 'refresh_token'
+        assert fetch.call_args.kwargs['refresh_token'] == 'rt1'
+    assert data['rt'] == 'rt2' and data['admin'] is False
+    # Losing a required user group ends the session.
+    app.state.config['oidc']['user_groups'] = ['store-users']
+    data['lr'] = 0
+    with patch.object(oc, 'load_server_metadata', AsyncMock(return_value=dict(metadata))), \
+         patch.object(oc, 'fetch_access_token', AsyncMock(return_value={'id_token': 'ok3'})), \
+         patch.object(oc, 'parse_id_token', AsyncMock(return_value={'sub': 'alice', 'iss': 'https://idp.test', 'groups': ['staff']})):
+        assert client.get('/auth/session').status_code == 401
+    app.state.config['oidc']['user_groups'] = []
+    # Revoked refresh token (invalid_grant) ends the session.
+    with patch.object(oc, 'load_server_metadata', AsyncMock(return_value={'issuer': 'https://idp.test'})), \
+         patch.object(oc, 'authorize_access_token', AsyncMock(return_value={'id_token': 'ok', 'refresh_token': 'rt9', 'userinfo': claims})):
+        assert client.get('/auth/callback', follow_redirects=False).status_code == 303
+    data = list(app.state.sessions.values())[-1][1]
+    data['lr'] = 0
+    with patch.object(oc, 'load_server_metadata', AsyncMock(return_value=dict(metadata))), \
+         patch.object(oc, 'fetch_access_token', AsyncMock(side_effect=OAuthError(error='invalid_grant', description='revoked'))):
+        assert client.get('/auth/session').status_code == 401
+
+
+def test_login_page_describes_lifecycle(gateway):
+    client, _, _, _ = gateway
+    text = client.get('/auth/login').text
+    assert 'renew with activity' in text and 're-check permissions' in text
+
+
+def test_refresh_serialized_under_concurrency(gateway):
+    """Two concurrent requests at the refresh boundary cause one directory/token call."""
+    import threading
+    client, app, _, _ = gateway
+    with patch('auth_gateway.main.authenticate', return_value='uid=alice,dc=test'):
+        assert ldap_signin(client).status_code == 303
+    cookie = client.cookies.get('__Host-cws-session')
+    for _, data in app.state.sessions.values():
+        data['lr'] = 0
+    calls = []
+    def slow_recheck(cfg, dn):
+        import time as _time
+        _time.sleep(0.3)
+        calls.append(dn)
+        return True
+    results = []
+    def worker():
+        other = TestClient(app, base_url='https://store.test')
+        results.append(other.get('/auth/session', headers={'Cookie': '__Host-cws-session=' + cookie}).status_code)
+    with patch('auth_gateway.main.recheck_admin', side_effect=slow_recheck):
+        threads = [threading.Thread(target=worker) for _ in range(3)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+    assert results == [200, 200, 200]
+    assert len(calls) == 1
+
+
+def test_stale_authorization_cap_ends_session(gateway):
+    import time
+    client, app, _, _ = gateway
+    with patch('auth_gateway.main.authenticate', return_value='uid=alice,dc=test'):
+        assert ldap_signin(client).status_code == 303
+    for _, data in app.state.sessions.values():
+        data['verified_at'] = time.time() - 4000  # Default cap is 3600 seconds.
+    with patch('auth_gateway.main.recheck_admin', side_effect=RuntimeError('directory down')):
+        assert client.get('/auth/session').status_code == 401
+    assert not any(data.get('subject') for _, data in app.state.sessions.values())
