@@ -1,0 +1,23 @@
+{{- if and .Values.cwsstore.enabled .Values.cwsstore.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "ocws.fullname" . }}-cwsstore
+  labels:
+    {{- include "ocws.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.cwsstore.ingress.className }}
+  ingressClassName: {{ .Values.cwsstore.ingress.className }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.cwsstore.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "ocws.fullname" . }}-cwsstore
+                port:
+                  name: http
+{{- end }}
