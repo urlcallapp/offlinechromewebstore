@@ -343,6 +343,49 @@ def build_index(src_folder=None, dest_folder=None, artifacts_dir=None):
     return sorted(extensions.values(), key=lambda item: item["name"].lower())
 
 
+# Strict Chrome version shape for staged uploads; intake rejects anything else.
+UPLOAD_VERSION = re.compile(r"(0|[1-9]\d{0,4})(\.(0|[1-9]\d{0,4})){0,3}\Z")
+UPLOAD_FILENAME = re.compile(r"[A-Za-z0-9._-]+\Z")
+INTAKE_DIR = os.environ.get("CWS_INTAKE_DIR", "")
+
+
+def consume_intake(intake_dir=None, artifacts_dir=None):
+    """Move validated staged uploads from the intake tree into artifacts.
+
+    The store's upload endpoint stages first-party CRXs in CWS_INTAKE_DIR.
+    Each build revalidates identity and version, then moves them under
+    artifacts/extensions/<id>/<version>/ so they index and serve like synced
+    packages. Invalid files stay in intake for an admin to review or delete.
+    """
+    intake_dir = intake_dir if intake_dir is not None else INTAKE_DIR
+    artifacts_dir = artifacts_dir or ARTIFACTS_DIR
+    if not intake_dir or not os.path.isdir(intake_dir):
+        return 0
+    consumed = 0
+    for root, _, files in os.walk(intake_dir):
+        for filename in sorted(files):
+            if not filename.endswith(".crx"):
+                continue
+            source = os.path.join(root, filename)
+            try:
+                if not UPLOAD_FILENAME.fullmatch(filename):
+                    raise ValueError("unsafe filename")
+                extension_id = read_crx_id(source)
+                with tempfile.TemporaryDirectory() as staging:
+                    manifest = extract_crx(source, staging)
+                version = manifest.get("version")
+                if not isinstance(version, str) or not UPLOAD_VERSION.fullmatch(version):
+                    raise ValueError(f"invalid manifest version {version!r}")
+                target_dir = os.path.join(artifacts_dir, "extensions", extension_id, version)
+                os.makedirs(target_dir, exist_ok=True)
+                shutil.move(source, os.path.join(target_dir, filename))
+                consumed += 1
+                logger.info("Consumed uploaded extension %s %s", extension_id, version)
+            except (ValueError, OSError, zipfile.BadZipFile, KeyError) as exc:
+                logger.error("Refusing staged upload %s: %s (left in intake)", source, exc)
+    return consumed
+
+
 def save_extensions_info(extensions_info, output_file):
     os.makedirs(os.path.dirname(output_file) or ".", exist_ok=True)
     with open(output_file, "w") as json_file:
@@ -354,6 +397,7 @@ def main():
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
+    consume_intake()
     extensions_info = build_index()
     save_extensions_info(
         extensions_info, os.path.join(ARTIFACTS_DIR, "extensions_info.json")

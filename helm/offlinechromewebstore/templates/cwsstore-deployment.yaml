@@ -60,6 +60,8 @@ spec:
               value: /store/artifacts
             - name: CWS_ASSETS_DIR
               value: /store/assets
+            - name: CWS_INTAKE_DIR
+              value: /store/intake
             {{- range $key, $value := .Values.cwsstore.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
@@ -86,6 +88,8 @@ spec:
             - name: assets
               mountPath: /store/assets
               readOnly: true
+            - name: intake
+              mountPath: /store/intake
           {{- with .Values.cwsstore.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
@@ -109,4 +113,7 @@ spec:
         - name: assets
           persistentVolumeClaim:
             claimName: {{ include "ocws.fullname" . }}-assets
+        - name: intake
+          persistentVolumeClaim:
+            claimName: {{ include "ocws.fullname" . }}-intake
 {{- end }}

@@ -14,7 +14,16 @@ body{font:16px/1.5 system-ui,sans-serif;color:#17213a;background:#f4f6fa;margin:
 </tbody></table>{% if not extensions %}<p>No available CRXs. Build and transfer a local catalog first.</p>{% endif %}
 <button type="submit">Generate preview</button></form><p id="error" role="alert"></p>
 <section id="result" hidden><h2>Review before distribution</h2><ul id="warnings"></ul><button id="gpo" disabled>Download GPO JSON</button><button id="registry" disabled>Download Windows .reg</button><button id="powershell" disabled>Download GPO PowerShell</button><button id="linux" disabled>Download Linux JSON</button><button id="allowlist" disabled>Download allowlist reference</button><button id="forcelist" disabled>Download forcelist reference</button><button id="bundle" disabled>Download full review bundle</button><pre id="preview"></pre>
-<p>Windows: paste the compact GPO JSON into "Extension management settings", or import the .reg into a machine registry for direct testing (it is not a GPMC/GPO import), or review the PowerShell script and run it on a management workstation to merge ExtensionSettings into your existing named GPO. Linux: deploy the managed-policy JSON. The allowlist/forcelist downloads are legacy references: ExtensionSettings overrides those legacy policies, so never deploy both strategies together. Nothing here changes your domain by itself.</p></section>
+<p>Windows: paste the compact GPO JSON into "Extension management settings", or import the .reg into a machine registry for direct testing (it is not a GPMC/GPO import), or review the PowerShell script and run it on a management workstation to merge ExtensionSettings into your existing named GPO. Linux: deploy the managed-policy JSON. The allowlist/forcelist downloads are legacy references: ExtensionSettings overrides those legacy policies, so never deploy both strategies together. The store only generates these files and never touches your domain; reviewing and running the PowerShell script changes the named GPO.</p></section>
+<section><h2>Upload your own extensions</h2>
+<p>Stage a first-party CRX you built or vetted. The upload only lands in a staging folder; it goes live after the next offline build consumes it. Packages are checked for structure and against the malicious blocklist, but structure is not authenticity: only upload packages you trust.</p>
+{% if intake_configured %}
+<input id="crx-file" type="file" accept=".crx"><button id="upload" type="button" disabled>Upload CRX</button><p id="upload-status" role="status"></p>
+<table id="staged"><thead><tr><th>Staged upload</th><th>Version</th><th>Size</th><th></th></tr></thead><tbody>
+{% for item in uploads %}<tr><td><code>{{ item.filename }}</code></td><td>{{ item.version }}</td><td>{{ item.size }}</td><td><button type="button" class="remove" data-id="{{ item.extension_id }}" data-version="{{ item.version }}">Remove</button></td></tr>{% endfor %}
+</tbody></table>{% if not uploads %}<p>No staged uploads.</p>{% endif %}
+{% else %}<p class="note">Upload intake is not configured on this store (CWS_INTAKE_DIR is unset).</p>{% endif %}
+</section>
 <p><a href="https://support.google.com/chrome/a/answer/9867568?hl=en" rel="noreferrer">Chrome policy documentation (Internet required)</a></p>
 </main><script>
 let bundle=null,revision=0;
@@ -29,5 +38,12 @@ document.querySelector('#warnings').replaceChildren(...data.warnings.map(text=>{
 document.querySelector('#preview').textContent=JSON.stringify(data.linux_managed_policy,null,2);result.hidden=false;result.querySelectorAll('button').forEach(button=>button.disabled=false);
 }catch(error){if(current!==revision)return;document.querySelector('#error').textContent=error.message}});
 const downloads={gpo:['chrome-policy-gpo.json','application/json',b=>b.gpo_extension_settings],registry:['chrome-policy.reg','text/plain',b=>b.windows_registry_file],powershell:['chrome-policy-gpo.ps1','text/plain',b=>b.gpo_powershell_script],linux:['chrome-policy-linux.json','application/json',b=>b.linux_managed_policy],allowlist:['chrome-policy-allowlist.json','application/json',b=>b.extension_allowlist],forcelist:['chrome-policy-forcelist.txt','text/plain',b=>b.extension_install_forcelist.join('\n')],bundle:['chrome-policy-bundle.json','application/json',b=>b]};
-for(const format of Object.keys(downloads))document.querySelector('#'+format).onclick=()=>{if(!bundle)return;const[filename,type,pick]=downloads[format],value=pick(bundle);const blob=new Blob([typeof value==='string'?value:JSON.stringify(value,null,2)],{type});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+const fileInput=document.querySelector('#crx-file'),uploadButton=document.querySelector('#upload'),status=document.querySelector('#upload-status');
+if(fileInput){fileInput.addEventListener('change',()=>{uploadButton.disabled=!fileInput.files.length});
+uploadButton.onclick=async()=>{const file=fileInput.files[0];if(!file)return;uploadButton.disabled=true;status.textContent='Uploading '+file.name+'...';
+try{const response=await fetch('/api/admin/intake/upload',{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:file});const data=await response.json();if(!response.ok)throw new Error(data.detail||'Upload failed');status.textContent='Staged '+data.staged.filename+' ('+data.staged.version+'). It goes live after the next offline build.';setTimeout(()=>location.reload(),1500);
+}catch(error){status.textContent=error.message;uploadButton.disabled=false}};
+document.querySelectorAll('.remove').forEach(button=>button.onclick=async()=>{if(!confirm('Remove the staged upload '+button.dataset.version+'?'))return;
+const response=await fetch('/api/admin/intake/'+button.dataset.id+'/'+encodeURIComponent(button.dataset.version),{method:'DELETE'});if(response.ok)location.reload();else{const data=await response.json();status.textContent=data.detail||'Remove failed'}})};
+if(!bundle)return;const[filename,type,pick]=downloads[format],value=pick(bundle);const blob=new Blob([typeof value==='string'?value:JSON.stringify(value,null,2)],{type});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 </script></body></html>

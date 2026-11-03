@@ -47,6 +47,8 @@ spec:
               value: /app/artifacts
             - name: CWS_ASSETS_DIR
               value: /app/assets
+            - name: CWS_INTAKE_DIR
+              value: /app/intake
             {{- range $key, $value := .Values.cwsbuild.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
@@ -60,6 +62,9 @@ spec:
               mountPath: /app/artifacts
             - name: assets
               mountPath: /app/assets
+            - name: intake
+              mountPath: /app/intake
+              readOnly: true
           {{- with .Values.cwsbuild.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
@@ -75,4 +80,7 @@ spec:
         - name: assets
           persistentVolumeClaim:
             claimName: {{ include "ocws.fullname" . }}-assets
+        - name: intake
+          persistentVolumeClaim:
+            claimName: {{ include "ocws.fullname" . }}-intake
 {{- end }}

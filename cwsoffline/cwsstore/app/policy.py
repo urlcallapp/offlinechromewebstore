@@ -52,31 +52,53 @@ def _ps_quote(value):
     return "'" + value.replace("'", "''") + "'"
 
 
-def _windows_registry_file(settings_json):
+def _windows_registry_file(sections):
     """A .reg import for direct machine-level policy application/testing.
 
+    sections: [(registry key, [(value name, "sz"|"dword", data)])].
     This is NOT a GPMC/GPO import format; the PowerShell export merges into an
     existing GPO instead."""
-    return ("Windows Registry Editor Version 5.00\r\n\r\n"
-            "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Google\\Chrome]\r\n"
-            '"ExtensionSettings"="' + _reg_escape(settings_json) + '"\r\n')
+    lines = ["Windows Registry Editor Version 5.00"]
+    for key, values in sections:
+        lines.append("")
+        lines.append("[" + key + "]")
+        for name, kind, data in values:
+            if kind == "dword":
+                lines.append(f'"{name}"=dword:{data:08x}')
+            else:
+                lines.append(f'"{name}"="' + _reg_escape(str(data)) + '"')
+    return "\r\n".join(lines) + "\r\n"
 
 
-def _gpo_powershell_script(settings_json):
-    """Review-then-run script merging ExtensionSettings into an existing named GPO.
+def _gpo_powershell_script(sections):
+    """Review-then-run script merging policy values into an existing named GPO.
 
     Set-GPRegistryValue only writes these values; other GPO settings are kept."""
-    return ("# Requires a management workstation with the RSAT GroupPolicy module and\n"
-            "# rights to edit the GPO. Review every line before running.\n"
-            "$GpoName = 'SET-TO-YOUR-EXISTING-GPO-NAME'\n"
-            "if ($GpoName -eq 'SET-TO-YOUR-EXISTING-GPO-NAME') { throw 'Set $GpoName to your existing GPO first' }\n"
-            "Set-GPRegistryValue -Name $GpoName -Key 'HKLM\\Software\\Policies\\Google\\Chrome' "
-            "-ValueName 'ExtensionSettings' -Type String -Value " + _ps_quote(settings_json) + "\n")
+    lines = ["# Running this script MODIFIES the named GPO on your domain. The offline",
+             "# store only generated this file; it never executes it. Requires a management",
+             "# workstation with the RSAT GroupPolicy module and rights to edit the GPO.",
+             "# Review every line before running.",
+             "$GpoName = 'SET-TO-YOUR-EXISTING-GPO-NAME'",
+             "if ($GpoName -eq 'SET-TO-YOUR-EXISTING-GPO-NAME') { throw 'Set $GpoName to your existing GPO first' }"]
+    for key, values in sections:
+        for name, kind, data in values:
+            lines.append("Set-GPRegistryValue -Name $GpoName -Key " + _ps_quote(key) +
+                         " -ValueName " + _ps_quote(name) +
+                         (" -Type DWord -Value " + str(data) if kind == "dword"
+                          else " -Type String -Value " + _ps_quote(str(data))))
+    return "\n".join(lines) + "\n"
 
 
-def generate_policy(spec, catalog, blocked_ids=()):
+def _linux_policy(settings, managed_values):
+    policy = {"ExtensionSettings": settings}
+    if managed_values:
+        policy["3rdparty"] = {"extensions": managed_values}
+    return policy
+
+
+def generate_policy(spec, catalog, blocked_ids=(), assets_dir=None):
     """Return reviewable exports, requiring every administrative choice explicitly."""
-    if not isinstance(spec, dict) or set(spec) - {"base_url", "default_mode", "extensions", "blocked_install_message"}:
+    if not isinstance(spec, dict) or set(spec) - {"base_url", "default_mode", "extensions", "blocked_install_message", "extension_policies"}:
         raise ValueError("Unknown policy fields")
     base_url = validate_base_url(spec.get("base_url"))
     default = spec.get("default_mode")
@@ -112,6 +134,39 @@ def generate_policy(spec, catalog, blocked_ids=()):
     forcelist = sorted(f"{key};{base_url}/crx" for key, val in settings.items()
                        if key != "*" and val["installation_mode"] == "force_installed")
     settings_json = json.dumps(settings, separators=(",", ":"), ensure_ascii=True)
+    # Extension-internal managed policy, validated against each extension's own
+    # declared storage.managed_schema. Refused entirely without local assets.
+    extension_policies = spec.get("extension_policies") or {}
+    if not isinstance(extension_policies, dict) or len(extension_policies) > 1000:
+        raise ValueError("extension_policies must be an object of up to 1000 extension IDs")
+    managed_values = {}
+    schema_paths = {}
+    unenforced = {}
+    sections = [("HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Google\\Chrome",
+                 [("ExtensionSettings", "sz", settings_json)])]
+    if extension_policies:
+        if not assets_dir:
+            raise ValueError("Extension managed policy requires the local assets directory")
+        try:
+            from app.extension_policy import (load_managed_schema, policy_key,
+                                              registry_entries, validate_managed_values)
+        except ImportError:  # policy.py running standalone: extension_policy sits beside it
+            from extension_policy import (load_managed_schema, policy_key,
+                                          registry_entries, validate_managed_values)
+        for ext_id, values in sorted(extension_policies.items()):
+            if not isinstance(ext_id, str) or not ID.fullmatch(ext_id):
+                raise ValueError("Each managed policy needs a valid Chrome extension ID")
+            if ext_id in blocked:
+                raise ValueError(f"Extension {ext_id} is blocklisted; managed policy is refused")
+            if ext_id not in available:
+                raise ValueError(f"Extension {ext_id} is not in the local catalog")
+            schema, schema_rel = load_managed_schema(assets_dir, ext_id)
+            unenforced_ignored = validate_managed_values(schema, values, ext_id)
+            managed_values[ext_id] = values
+            schema_paths[ext_id] = schema_rel
+            if unenforced_ignored:
+                unenforced[ext_id] = unenforced_ignored
+            sections.append((policy_key(ext_id), registry_entries(ext_id, values)))
     warnings = [
         "ExtensionSettings overrides the legacy allowlist/forcelist/blocklist policies; do not deploy both strategies together. The legacy lists below are a reference for environments that have not migrated.",
         "Review and merge with existing enterprise policy before deployment. ExtensionSettings overrides legacy extension policies.",
@@ -122,12 +177,18 @@ def generate_policy(spec, catalog, blocked_ids=()):
     ]
     if base_url.startswith("http:"):
         warnings.append("HTTP does not protect CRX transport. Prefer HTTPS with a certificate trusted by managed clients.")
+    for ext_id, keywords in sorted(unenforced.items()):
+        warnings.append(f"Extension {ext_id} schema uses constraint keywords this export does not enforce: {', '.join(keywords)}. Chrome applies its own validation at runtime.")
+    if managed_values:
+        warnings.append("Managed extension values were validated against each extension's declared storage.managed_schema (types, enums, required keys) only; Chrome performs the final validation.")
     return {
         "extension_settings": settings,
         "gpo_extension_settings": settings_json,
-        "linux_managed_policy": {"ExtensionSettings": settings},
-        "windows_registry_file": _windows_registry_file(settings_json),
-        "gpo_powershell_script": _gpo_powershell_script(settings_json),
+        "linux_managed_policy": _linux_policy(settings, managed_values),
+        "windows_registry_file": _windows_registry_file(sections),
+        "gpo_powershell_script": _gpo_powershell_script(sections),
+        "extension_managed_policies": managed_values,
+        "extension_policy_schemas": schema_paths,
         # Legacy reference formats (ExtensionSettings takes precedence over all):
         "extension_install_forcelist": forcelist,
         "extension_install_sources": [base_url + "/*"],
@@ -144,6 +205,7 @@ def main():
     parser.add_argument("--spec", required=True, help="Reviewed policy selection JSON")
     parser.add_argument("--catalog", required=True, help="Local extensions_info.json")
     parser.add_argument("--blocklist", required=True, help="Local malicious_extensions.json (use [] if none)")
+    parser.add_argument("--assets-dir", help="Built extension assets (required for extension managed policy)")
     parser.add_argument("--format", choices=("bundle", "gpo", "linux", "allowlist"), default="bundle")
     args = parser.parse_args()
     try:
@@ -152,7 +214,7 @@ def main():
         if not isinstance(catalog, list) or not isinstance(blocked, list):
             raise ValueError("Catalog and blocklist must be JSON arrays")
         blocked = [item["id"] if isinstance(item, dict) else item for item in blocked]
-        result = generate_policy(spec, catalog, blocked)
+        result = generate_policy(spec, catalog, blocked, assets_dir=args.assets_dir)
     except (OSError, ValueError, KeyError, TypeError) as exc:
         parser.exit(2, f"Policy generation refused: {exc}\n")
     if args.format == "gpo":

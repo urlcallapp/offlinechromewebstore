@@ -8,6 +8,7 @@ services:
     network_mode: none
     volumes:
       - ./artifacts:/app/artifacts
+      - ./intake:/app/intake
       - ./assets:/app/assets
     stdin_open: true
     tty: true
@@ -19,6 +20,7 @@ services:
     image: cwsstore
     volumes:
       - ./artifacts:/store/artifacts
+      - ./intake:/store/intake
       - ./assets:/store/assets
     ports:
       - "8005:8005"

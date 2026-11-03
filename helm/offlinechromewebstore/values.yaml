@@ -22,6 +22,9 @@ persistence:
     size: 10Gi
   assets:
     size: 5Gi
+  # First-party CRX upload staging (store writes, cwsbuild consumes).
+  intake:
+    size: 5Gi
   # ReadWriteMany required when pods may land on different nodes.
   accessMode: ReadWriteOnce
 
