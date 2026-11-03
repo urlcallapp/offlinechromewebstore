@@ -1,6 +1,7 @@
 """Build cwsstore assets and the extensions_info.json index from mirrored CRX files.
 
-Reads CRX packages from the artifacts tree produced by cwssync:
+Reads CRX packages recursively, deriving identity from their CRX2/3 headers.
+First-party packages may have any filename. cwssync convention:
 
     artifacts/extensions/<extension_id>/<version>/<id>_<name>_<version>.crx
 
@@ -8,11 +9,13 @@ Extracts each package under the assets directory, reads its manifest.json and
 writes artifacts/extensions_info.json consumed by cwsstore. Multiple versions
 of the same extension are merged into one entry, newest first.
 """
+import hashlib
 import json
 import logging
 import os
 import re
 import shutil
+import struct
 import tempfile
 import zipfile
 
@@ -20,7 +23,9 @@ from packaging.version import InvalidVersion, Version
 
 logger = logging.getLogger(__name__)
 
-EXTENSION_ID_PATTERN = re.compile(r"^[a-p]{32}$")
+EXTENSION_ID_PATTERN = re.compile(r"[a-p]{32}")
+# Bound all untrusted header allocations; no network or protobuf dependency.
+MAX_CRX_HEADER_SIZE = 1024 * 1024
 # Root-relative fallback icon served by cwsstore's static files.
 FALLBACK_ICON_URL = "static/images/icon_144px_blank.png"
 
@@ -67,7 +72,7 @@ def load_extension_metadata(path=None):
 
 
 def is_valid_extension_id(value):
-    return bool(EXTENSION_ID_PATTERN.match(value or ""))
+    return bool(EXTENSION_ID_PATTERN.fullmatch(value or ""))
 
 
 def parse_crx_filename(filename):
@@ -78,6 +83,115 @@ def parse_crx_filename(filename):
     name = parts[1].replace("-", " ") if len(parts) > 2 else ""
     version = parts[2] if len(parts) > 2 else (parts[1] if len(parts) == 2 else "")
     return extension_id, name, version
+
+
+def _id_from_bytes(raw):
+    return "".join(chr(ord("a") + int(nibble, 16)) for nibble in raw.hex())
+
+
+def _key_id(key):
+    return _id_from_bytes(hashlib.sha256(key).digest()[:16])
+
+
+def _protobuf_fields(data):
+    """Read bounded protobuf wire fields, rejecting truncation and groups."""
+    offset = 0
+
+    def varint():
+        nonlocal offset
+        value = 0
+        for shift in range(0, 70, 7):
+            if offset >= len(data):
+                raise ValueError("truncated protobuf varint")
+            byte = data[offset]
+            offset += 1
+            if shift == 63 and byte > 1:
+                raise ValueError("protobuf varint overflow")
+            value |= (byte & 127) << shift
+            if byte < 128:
+                return value
+        raise ValueError("protobuf varint overflow")
+
+    fields = {}
+    while offset < len(data):
+        tag = varint()
+        number, wire = tag >> 3, tag & 7
+        if not 0 < number < (1 << 29):
+            raise ValueError("invalid protobuf field number")
+        if wire == 0:
+            value = varint()
+        elif wire in (1, 2, 5):
+            length = varint() if wire == 2 else (8 if wire == 1 else 4)
+            if length > len(data) - offset:
+                raise ValueError("truncated protobuf field")
+            value = data[offset:offset + length]
+            offset += length
+        else:
+            raise ValueError("unsupported protobuf wire type")
+        fields.setdefault(number, []).append((wire, value))
+    return fields
+
+
+def _single_bytes(fields, number, label):
+    values = fields.get(number, [])
+    if len(values) != 1 or values[0][0] != 2 or not values[0][1]:
+        raise ValueError(f"missing, duplicate or invalid {label}")
+    return values[0][1]
+
+
+def read_crx_id(crx_path):
+    """Extract CRX2/3 identity and check key/header consistency, NOT signatures.
+
+    Header bytes, public keys and signature bytes remain untrusted. Chrome
+    must still verify signatures at install/update; this is not an audit of
+    package authenticity, safety, or publisher ownership.
+    """
+    with open(crx_path, "rb") as handle:
+        prefix = handle.read(12)
+        if len(prefix) != 12 or prefix[:4] != b"Cr24":
+            raise ValueError("missing CRX header (unsigned ZIPs are not supported)")
+        version, size = struct.unpack("<II", prefix[4:])
+        if version == 3:
+            if not 0 < size <= MAX_CRX_HEADER_SIZE:
+                raise ValueError("invalid or oversized CRX3 header")
+            header = handle.read(size)
+            if len(header) != size:
+                raise ValueError("truncated CRX3 header")
+            fields = _protobuf_fields(header)
+            signed = _protobuf_fields(_single_bytes(fields, 10000, "signed_header_data"))
+            raw_id = _single_bytes(signed, 1, "crx_id")
+            if len(raw_id) != 16:
+                raise ValueError("CRX3 crx_id must be 16 bytes")
+            extension_id = _id_from_bytes(raw_id)
+            matches_key = False
+            # Store packages may contain additional publisher proofs whose
+            # hashes differ. At least one developer proof must match crx_id.
+            for wire, proof in fields.get(2, []) + fields.get(3, []):
+                if wire != 2:
+                    raise ValueError("invalid CRX3 proof wire type")
+                proof_fields = _protobuf_fields(proof)
+                key = _single_bytes(proof_fields, 1, "public_key")
+                _single_bytes(proof_fields, 2, "signature")
+                matches_key |= _key_id(key) == extension_id
+            if not matches_key:
+                raise ValueError("CRX3 crx_id has no matching developer public key")
+        elif version == 2:
+            signature_size_raw = handle.read(4)
+            if len(signature_size_raw) != 4:
+                raise ValueError("truncated CRX2 header")
+            signature_size = struct.unpack("<I", signature_size_raw)[0]
+            if not size or not signature_size or size + signature_size > MAX_CRX_HEADER_SIZE:
+                raise ValueError("invalid or oversized CRX2 header")
+            key = handle.read(size)
+            signature = handle.read(signature_size)
+            if len(key) != size or len(signature) != signature_size:
+                raise ValueError("truncated CRX2 key or signature")
+            extension_id = _key_id(key)
+        else:
+            raise ValueError(f"unsupported CRX version {version}")
+        if handle.read(4) != b"PK\x03\x04":
+            raise ValueError("CRX header is not followed by a ZIP archive")
+    return extension_id
 
 
 def _is_i18n_placeholder(value):
@@ -167,12 +281,23 @@ def build_index(src_folder=None, dest_folder=None, artifacts_dir=None):
                 continue
             crx_path = os.path.join(root, file)
             file_id, file_name, file_version = parse_crx_filename(file)
+            try:
+                extension_id = read_crx_id(crx_path)
+                if is_valid_extension_id(file_id) and file_id != extension_id:
+                    raise ValueError(
+                        f"filename ID {file_id} does not match CRX ID {extension_id}"
+                    )
+            except (ValueError, OSError) as exc:
+                logger.error("Skipping CRX with invalid identity %s: %s", crx_path, exc)
+                continue
+            if extension_id in malicious_ids:
+                logger.info("Skipping malicious extension: %s", extension_id)
+                continue
+            # Filename display hints only apply to the historical ID naming
+            # convention. Arbitrary first-party filenames need no ID or layout.
             if not is_valid_extension_id(file_id):
-                logger.warning("Skipping file with unexpected name: %s", crx_path)
-                continue
-            if file_id in malicious_ids:
-                logger.info("Skipping malicious extension: %s", file_id)
-                continue
+                file_name, file_version = "", ""
+            file_id = extension_id
 
             # Inspect each version in isolation. Only the newest valid package
             # supplies display metadata and assets; old files cannot overwrite

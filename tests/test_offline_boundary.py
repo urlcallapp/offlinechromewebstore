@@ -11,9 +11,13 @@ from conftest import REPO_ROOT, TAMPERMONKEY_ID, TRANSLATE_ID
 
 
 @pytest.mark.parametrize("with_sidecars", [False, True])
-def test_build_and_store_without_network(artifact_tree, with_sidecars):
+@pytest.mark.parametrize("arbitrary_filename", [False, True])
+def test_build_and_store_without_network(artifact_tree, with_sidecars, arbitrary_filename):
     """Use a fresh interpreter so imports/startup are covered by the guard too."""
     artifacts = Path(artifact_tree["artifacts"])
+    if arbitrary_filename:
+        original = next((artifacts / "extensions" / TAMPERMONKEY_ID).rglob("*.crx"))
+        original.rename(original.with_name("Internal Tool.crx"))
     if with_sidecars:
         (artifacts / "extension_metadata.json").write_text(json.dumps({
             TAMPERMONKEY_ID: {"origin": "webstore", "tags": ["tools"],
