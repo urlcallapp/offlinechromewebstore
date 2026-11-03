@@ -70,7 +70,8 @@ def test_unreadable_crx_is_skipped(artifact_tree):
 def test_latest_version_owns_metadata_and_clean_assets(tmp_path):
     import json
     import zipfile
-    ext_id = 'a' * 32
+    from crx_helpers import crx3, key_id
+    ext_id = key_id()
     artifacts = tmp_path / 'artifacts'
     assets = tmp_path / 'assets'
     for version, name in [('2.0', 'Newest'), ('1.0', 'Oldest')]:
@@ -80,6 +81,8 @@ def test_latest_version_owns_metadata_and_clean_assets(tmp_path):
             archive.writestr('manifest.json', json.dumps({'name': name, 'version': version, 'description': name, 'icons': {'128': 'icon.png'}}))
             archive.writestr('icon.png', name)
             archive.writestr(name + '.txt', name)
+        package = folder / f'{ext_id}_Test_{version}.crx'
+        package.write_bytes(crx3(package.read_bytes()))
     index = cwsbuild.build_index(dest_folder=str(assets), artifacts_dir=str(artifacts))
     assert index[0]['name'] == index[0]['description'] == 'Newest'
     assert [v['version'] for v in index[0]['versions']] == ['2.0', '1.0']

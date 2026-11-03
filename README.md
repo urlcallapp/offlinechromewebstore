@@ -247,3 +247,49 @@ frontend tests, dependency audit, reproducible frontend build, and actual Docker
 image builds plus a containerized fixture build/download smoke test. This
 workflow never publishes images or calls a live extension risk service. Passing
 local unit tests is not evidence that the Docker job has passed.
+
+
+### First-party CRX identity (offline)
+
+Drop a **packed CRX3** under `artifacts/extensions/` (subdirectories are
+optional), for example `artifacts/extensions/internal/MyTool.crx`, then run
+`cwsbuild` as usual. No extension ID is required in the filename or directory.
+The name and version come from `manifest.json`. The original CRX bytes and path
+are preserved for download and updates; packages are never re-signed or renamed.
+
+`cwsbuild` derives the ID from the CRX3 header's 16-byte `crx_id` and checks
+that at least one developer public-key hash matches it. Additional publisher
+proofs are allowed. Legacy CRX2 identity is derived from its public key; this
+is parsing compatibility, not a promise that current Chrome accepts CRX2.
+Keep the same private signing key for future versions to retain the same ID.
+Do not copy the private key into the artifacts directory.
+
+Existing `<id>.crx` and `<id>_<name>_<version>.crx` filenames continue to work.
+When the first underscore-delimited segment is a valid 32-character `a`-`p` ID,
+it **must match** the header-derived ID. A mismatch is logged and the package
+is excluded before assets, metadata, blocklist checks or update entries can be
+assigned to a wrong ID. The blocklist and optional `extension_metadata.json`
+classification use the derived ID, including for arbitrarily named packages.
+Directory names and a manifest `key` are never used as an identity fallback.
+For local in-house metadata, key the sidecar by this derived ID. If you also
+use cwssync's in-house inventory declarations, its existing
+`extensions/<id>/<version>/*.crx` inventory convention still applies; sync does
+not discover arbitrary first-party paths or upload them to the Web Store.
+
+Malformed/truncated/oversized headers, unsupported CRX versions, missing proof
+fields, key/ID conflicts, and plain unsigned ZIPs renamed `.crx` are explicitly
+logged and skipped. Pack unsigned source with a signing key first. There is no
+fallback to a trusted-looking filename. Rebuild the index after changing files;
+builds can contain valid entries even if other packages were skipped, so inspect
+the logs for exclusions.
+
+**Security limit:** this is identity extraction and structural consistency
+checking, **not cryptographic signature verification**. Header, key and signature
+bytes remain untrusted; an attacker can forge internally consistent fields.
+A parsed ID does not prove publisher ownership, package integrity, safety, or
+installability. Chrome still performs its own install/update validation. Only
+import CRXs through your approved review process. No online service is contacted
+by cwsbuild or cwsstore for identity checks.
+
+Format references: [Chromium CRX3 schema](https://chromium.googlesource.com/chromium/src/+/HEAD/components/crx_file/crx3.proto)
+and [Chromium ID algorithm](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/components/crx_file/id_util.cc).
