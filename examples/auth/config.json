@@ -9,13 +9,30 @@
     "base_dn": "ou=people,dc=example,dc=internal",
     "bind_dn": "cn=read-only-search,dc=example,dc=internal",
     "username_attribute": "uid",
-    "admin_group_dn": "cn=store-admins,ou=groups,dc=example,dc=internal"
+    "admin_group_dn": "cn=store-admins,ou=groups,dc=example,dc=internal",
+    "nested_groups": {
+      "enabled": false,
+      "matching_rule_in_chain": false,
+      "max_depth": 5,
+      "max_groups": 128
+    }
   },
   "oidc": {
     "issuer": "https://identity.example.internal/realms/company",
     "client_id": "extension-store",
     "groups_claim": "groups",
-    "admin_groups": ["store-admins"],
-    "user_groups": ["store-users", "store-admins"]
+    "admin_groups": [
+      "store-admins"
+    ],
+    "user_groups": [
+      "store-users",
+      "store-admins"
+    ]
+  },
+  "session": {
+    "idle_ttl_seconds": 900,
+    "max_ttl_seconds": 28800,
+    "refresh_interval_seconds": 300,
+    "max_stale_seconds": 3600
   }
 }

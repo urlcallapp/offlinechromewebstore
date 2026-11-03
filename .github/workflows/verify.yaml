@@ -53,3 +53,29 @@ jobs:
           cmp /tmp/download.crx "tests/fixtures/$id.crx"
           test "$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:8005/static/extensions/$id.crx")" = 404
           docker compose run --rm --no-deps cwssync python extension_sync.py --help
+      - name: Exercise the auth gateway command inside the built image
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/auth-config /tmp/auth-secret
+          printf 'ci-only-gateway-secret-ci-only-gateway-secret' > /tmp/auth-secret/gateway-secret
+          printf 'ci-only-unused' > /tmp/auth-secret/oidc-client-secret
+          printf 'ci-only-unused' > /tmp/auth-secret/ldap-bind-password
+          printf '%s' '{"origin":"https://store.test","upstream":"http://cwsstore:8005","access":"anonymous","oidc":{"issuer":"https://idp.test","client_id":"ci","admin_groups":["admins"]}}' > /tmp/auth-config/config.json
+          docker rm -f cwsauth-ci || true
+          docker run -d --name cwsauth-ci --entrypoint uvicorn \
+            -v /tmp/auth-config:/auth-config:ro -v /tmp/auth-secret:/auth-secret:ro \
+            -e CWS_AUTH_CONFIG_FILE=/auth-config/config.json \
+            -e CWS_AUTH_UPSTREAM=http://cwsstore:8005 \
+            -e CWS_AUTH_ACCESS=anonymous \
+            -e CWS_AUTH_ORIGIN=https://store.test \
+            -e CWS_ADMIN_GATEWAY_SECRET_FILE=/auth-secret/gateway-secret \
+            -e CWS_LDAP_BIND_PASSWORD_FILE=/auth-secret/ldap-bind-password \
+            -e CWS_OIDC_CLIENT_SECRET_FILE=/auth-secret/oidc-client-secret \
+            -p 127.0.0.1:8006:8006 \
+            cwsstore auth_gateway.main:create_app --factory --host 0.0.0.0 --port "8006" --workers "1" --no-proxy-headers --no-access-log
+          trap 'docker logs cwsauth-ci || true; docker rm -f cwsauth-ci || true; docker compose logs; docker compose down' EXIT
+          test "$(curl -s --retry 15 --retry-delay 2 --retry-all-errors -o /dev/null -w '%{http_code}' http://localhost:8006/auth/health)" = 204
+          curl --fail http://localhost:8006/auth/login | grep 'Sign in with SSO'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8006/api/admin/policy/export)" = 401
+          docker rm -f cwsauth-ci || true

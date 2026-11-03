@@ -14,10 +14,23 @@ Run `auth_gateway.main:create_app --factory` in a separate process/container:
   that user to verify their password. Verified LDAPS or StartTLS is mandatory.
   Referrals, anonymous/empty-password binds and plaintext fallback are disabled.
   Filters escape user input. Connections/searches have timeouts and size bounds.
-  This first implementation requires a directory exposing direct `memberOf`
-  memberships (AD or LDAP with that overlay). Nested groups and groupOfNames-only
-  schemas are not implemented. A regular LDAP user without the admin group is
+  By default authorization uses the directory's direct `memberOf` memberships
+  (AD or LDAP with that overlay). A regular LDAP user without the admin group is
   denied; regular browsing SSO uses OIDC.
+
+  Nested groups are opt-in via `ldap.nested_groups`:
+
+  - `enabled: true` resolves transitive membership with a portable reverse
+    `member` traversal over groupOfNames/groupOfUniqueNames/AD group objects:
+    cycle-safe (visited set), bounded by `max_depth` (default 5, maximum 16)
+    and `max_groups` (default 128, maximum 4096), over `group_search_base`
+    (defaults to `base_dn`). memberUid-only posixGroup schemas are not
+    supported. Referrals stay disabled: traversal never leaves the configured
+    verified-TLS server. Bounds fail closed.
+  - `matching_rule_in_chain: true` instead issues one server-side transitive
+    query using the AD/LDS rule OID 1.2.840.113556.1.4.1941. Directories that
+    do not implement that rule reject the filter and sign-in fails closed.
+    Enable this only for AD/LDS.
 - Generic OIDC SSO: authorization-code flow with PKCE S256, state and nonce;
   Authlib validates signed ID tokens, issuer, audience, expiry and nonce. The
   configured issuer must use HTTPS. `admin_groups` is a mandatory explicit
@@ -79,20 +92,53 @@ Secrets are files, never committed config or Helm values:
 - `CWS_LDAP_BIND_PASSWORD_FILE`: only when LDAP enabled.
 - `CWS_OIDC_CLIENT_SECRET_FILE`: only when OIDC enabled.
 
-The gateway's sessions are bounded, opaque, server-side and expire after 15
-minutes. Cookies are Secure, HttpOnly, host-only and SameSite=Lax. No password,
-OIDC token or group list is sent in the cookie. Logout invalidates the local
-session, not the upstream IdP SSO session. Directory/IdP group removal takes
-effect at the next login or session expiry; there is no instant revocation feed.
-Only one gateway worker/replica is supported; restart or eviction signs users
-out. Do not scale it without adding a shared server-side session/rate-limit
-store. LDAP has a five-attempt/minute transport-source limit; behind an ingress
-this may be shared by users. Apply organization-level login throttling as well.
-No query/access logs should record OIDC codes or LDAP passwords.
+Sessions follow the usual SSO lifecycle (compare Keycloak's SSO session
+idle/max and OAuth2 token refresh), configured with the optional `session`
+object:
+
+- `idle_ttl_seconds` (default 900): sliding limit, renewed on authenticated
+  activity.
+- `max_ttl_seconds` (default 28800): absolute cap from sign-in; activity cannot
+  extend a session past it.
+- `refresh_interval_seconds` (default 300): authorization re-validation.
+  OIDC sessions exchange their refresh token (when the IdP issued one) for
+  fresh signed claims, so group changes, user-group removal and IdP-side
+  revocation take effect within one interval; `invalid_grant` ends the session.
+  Set `oidc.refresh: false` to disable token exchange. LDAP sessions re-check
+  directory membership with the read-only service identity; losing the admin
+  group ends the session. Transient directory/IdP failures keep the session
+  and retry after a minute. Without an IdP refresh token, OIDC group changes
+  apply at the next login or session expiry; `max_ttl_seconds` bounds that.
+- `max_stale_seconds` (default 3600): authorization freshness cap. A session
+  whose group/token re-validation has not succeeded within this window ends
+  even while active, so directory/IdP outages fail closed instead of extending
+  stale authorization up to the maximum age.
+
+Sessions are bounded, opaque and server-side (`memory` backend only), so one
+worker/replica: restart or eviction signs users out. Client-side token sessions
+were rejected: with rotating refresh tokens, concurrent requests holding
+per-request copies can exchange the same rotated token twice, which IdPs with
+reuse detection treat as token-family theft and revoke the whole family during
+normal traffic. Multi-replica deployments need a shared session and refresh
+coordination store (for example Redis/Valkey with atomic locking); that is a
+deliberate deployment decision, not bundled here. Refresh is serialized per
+session with an in-process lock, so concurrent requests trigger exactly one
+directory lookup or token exchange.
+
+Revocation timing: group removal, user-group loss and IdP-side token revocation
+take effect at the next refresh interval, not instantly. Logout invalidates the
+server-side session; it does not sign out the upstream IdP SSO session.
+
+Cookies are Secure, HttpOnly, host-only and SameSite=Lax. No password or group
+list is sent in the cookie. Logout invalidates the local session, not the
+upstream IdP SSO session. LDAP has a five-attempt/minute transport-source
+limit; behind an ingress this may be shared by users. Apply organization-level
+login throttling as well. No query/access logs should record OIDC codes or
+LDAP passwords.
 
 Helm chart 0.4 references an existing ConfigMap (`config.json`) and existing
 Secret with keys `gateway-secret`, `ldap-bind-password` and/or
-`oidc-client-secret`. The store mounts only `gateway-secret`. Use the auth values
+`oidc-client-secret`.  The store mounts only `gateway-secret`. Use the auth values
 example and a tested source-built store image, not an assumed updated `latest`.
 Ingress/Route target the gateway Service when enabled; backend Service remains
 ClusterIP. The gateway uses the same built image with a different command.
@@ -123,9 +169,14 @@ nonce and PKCE protected, with a fixed callback origin, not a user redirect URL.
 
 Tests cover anonymous/admin/non-admin boundaries, direct-backend and forged
 header denial, signed-token issuer/audience/expiry/nonce/signature validation,
-SSO state/PKCE/replay, LDAP escaping/TLS/bind handling, streaming proxy header
-sanitization, public update/download behavior, and offline build/store with
-network calls denied. Helm renders both Kubernetes and OpenShift profiles.
+SSO state/PKCE/replay, OIDC refresh-token rotation/group downgrade/user-group
+loss/invalid_grant revocation, LDAP escaping/TLS/bind handling, nested-group
+traversal depth/cycle/bound behavior and the AD matching-rule path, session
+idle sliding/absolute cap/stale-authorization cutoff, refresh serialization
+under concurrency, streaming
+proxy header sanitization, public update/download behavior, and offline
+build/store with network calls denied. Helm renders both Kubernetes and
+OpenShift profiles.
 
 This is not a live organization integration result. Before rollout test real
 LDAP schema/certificates/groups, real IdP login/logout/claim mapping/key rotation,
@@ -140,3 +191,6 @@ References:
 - https://openid.net/specs/openid-connect-core-1_0.html
 - https://www.keycloak.org/docs/latest/server_admin/
 - https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html
+- https://learn.microsoft.com/en-us/windows/win32/adsi/search-filter-syntax
+- https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokens
+- https://www.keycloak.org/docs/latest/server_admin/#_timeouts

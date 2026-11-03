@@ -21,7 +21,8 @@ metadata:
     {{- include "ocws.labels" . | nindent 4 }}
     app.kubernetes.io/component: cwsauth
 spec:
-  # In-memory, bounded, server-side sessions. One process/replica only.
+  # In-memory, bounded, server-side sessions. One process/replica only;
+  # multi-replica requires a shared session/refresh store (not implemented).
   replicas: 1
   strategy:
     type: Recreate
