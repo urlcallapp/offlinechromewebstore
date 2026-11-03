@@ -1,0 +1,12 @@
+# Load or mirror images and populate a complete artifacts snapshot before use.
+# Pin your own tested image tags/digests; latest here is not an approval to deploy.
+cwssync:
+  enabled: false
+cwsbuild:
+  image:
+    pullPolicy: Never
+cwsstore:
+  image:
+    pullPolicy: Never
+networkPolicy:
+  offlineRuntime: true

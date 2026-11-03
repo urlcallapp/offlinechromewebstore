@@ -1,12 +1,11 @@
 {
-    "ExtensionInstallForcelist": [
-      "dhdgffkkebhmkfjojejmpbldmpobfkfo;https://clients2.google.com/service/update2/crx",
-      "eimadpbcbfnmbkopoojfekhnkhdbieeh;http://0.0.0.0:8005/crx"
-      //"eimadpbcbfnmbkopoojfekhnkhdbieeh;http://localhost:8005/extensions_info.xml",
-      //"eimadpbcbfnmbkopoojfekhnkhdbieeh;http://0.0.0.0:8005/crx"
-    ], 
-    "ExtensionInstallSources": [
-      "http://localhost:8005/*", 
-      "http://0.0.0.0:8005/*"
-    ]
+  "ExtensionSettings": {
+    "*": {"installation_mode": "blocked"},
+    "aapbdbdomjkkjkaonfhkkikfgjllcleb": {
+      "installation_mode": "normal_installed",
+      "update_url": "https://extensions.example.internal/crx",
+      "override_update_url": true
+    },
+    "dhdgffkkebhmkfjojejmpbldmpobfkfo": {"installation_mode": "allowed"}
   }
+}

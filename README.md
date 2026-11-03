@@ -104,8 +104,8 @@ On the non-Internet connected system:
     ``` bash
     docker compose -f docker-compose-ag.yaml up --no-deps --pull never -d cwsstore
     ```
-3. Configure chrome policy to add **_http://cws_intranet_domain/*_** as **ExtensionInstallSources**, see [Configure GPO](#configure-gpo) section
-4. Open Chrome, hopefully you can magically install extensions.
+3. Open `/admin` and generate a reviewed policy for your managed clients. See [policy exports](examples/policy/README.md).
+4. Deploy the policy through your approved management process and test installation and a subsequent update on managed Chrome. Allowlisting alone does not bypass platform restrictions.
 
 #### Run with docker compose
 ``` bash
@@ -146,9 +146,16 @@ sudo rm -rf artifacts
 ```
 
 #### Configure GPO
-- *See [ExtensionInstallAllowlist](https://chromeenterprise.google/policies/?policy=ExtensionInstallAllowlist) chrome policy to configure allowlist for enhanced security*
-- *See [ExtensionInstallSources](https://chromeenterprise.google/policies/#ExtensionInstallSources) chrome policy to configure source for custom offline store url*
-- *See [ExtensionInstallForcelist](https://chromeenterprise.google/policies/#ExtensionInstallForcelist) to force install extenions from `https://cws_domain/crx`*
+
+Use the offline [policy export builder](examples/policy/README.md) at `/admin`,
+or the standard-library CLI, to generate compact ExtensionSettings for Windows
+GPO, Linux managed-policy JSON and an allowlist reference. All install modes
+and default behavior require an explicit admin choice. Nothing is applied or
+saved by the generator. Review existing policies and platform restrictions
+before distribution.
+
+Helm is already supported. See the [chart deployment guide](helm/offlinechromewebstore/README.md)
+for air-gapped values, optional enforced runtime egress denial, TLS and scheduling.
 
 ---
 

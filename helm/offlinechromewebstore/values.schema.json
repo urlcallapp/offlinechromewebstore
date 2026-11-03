@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "registry": {"type": "string", "minLength": 1},
+    "imagePullSecrets": {"type": "array", "items": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string", "minLength": 1}}}},
+    "networkPolicy": {"type": "object", "required": ["offlineRuntime"], "properties": {"offlineRuntime": {"type": "boolean"}}},
+    "persistence": {"type": "object", "properties": {"accessMode": {"enum": ["ReadWriteOnce", "ReadWriteMany"]}, "storageClass": {"type": "string"}}},
+    "cwssync": {"$ref": "#/definitions/component"},
+    "cwsbuild": {"$ref": "#/definitions/component"},
+    "cwsstore": {"allOf": [{"$ref": "#/definitions/component"}, {"type": "object", "properties": {"replicaCount": {"type": "integer", "minimum": 1}, "service": {"type": "object", "properties": {"port": {"type": "integer", "minimum": 1, "maximum": 65535}, "type": {"enum": ["ClusterIP", "NodePort", "LoadBalancer"]}}}}}]},
+    "nodeSelector": {"type": "object", "additionalProperties": {"type": "string"}},
+    "tolerations": {"type": "array"},
+    "affinity": {"type": "object"}
+  },
+  "definitions": {
+    "component": {"type": "object", "properties": {"enabled": {"type": "boolean"}, "env": {"type": "object", "additionalProperties": {"type": ["string", "number", "boolean"]}}, "image": {"type": "object", "properties": {"repository": {"type": "string", "minLength": 1}, "tag": {"type": "string", "minLength": 1}, "pullPolicy": {"enum": ["Always", "IfNotPresent", "Never"]}}}}}
+  }
+}

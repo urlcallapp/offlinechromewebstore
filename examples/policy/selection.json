@@ -1,0 +1,9 @@
+{
+  "base_url": "https://extensions.example.internal",
+  "default_mode": "blocked",
+  "blocked_install_message": "Contact your IT team to request an extension.",
+  "extensions": {
+    "aapbdbdomjkkjkaonfhkkikfgjllcleb": "normal_installed",
+    "dhdgffkkebhmkfjojejmpbldmpobfkfo": "allowed"
+  }
+}

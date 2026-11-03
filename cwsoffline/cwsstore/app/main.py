@@ -82,3 +82,6 @@ async def classic_storefront(request: Request):
             "current_year": datetime.now().year,
         },
     )
+
+from app.routes.admin import router as admin_router
+app.include_router(admin_router)

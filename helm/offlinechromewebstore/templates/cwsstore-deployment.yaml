@@ -22,6 +22,18 @@ spec:
         app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/component: cwsstore
     spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -51,8 +63,10 @@ spec:
           volumeMounts:
             - name: artifacts
               mountPath: /store/artifacts
+              readOnly: true
             - name: assets
               mountPath: /store/assets
+              readOnly: true
           {{- with .Values.cwsstore.resources }}
           resources:
             {{- toYaml . | nindent 12 }}

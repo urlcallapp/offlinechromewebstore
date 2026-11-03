@@ -16,5 +16,9 @@ Components:
     Update feed:   http://localhost:{{ .Values.cwsstore.service.port }}/crx
 {{- end }}
 
-Point Chrome policy ExtensionInstallSources / ExtensionInstallForcelist at the
-cwsstore address. See examples/policy/ in the repository.
+Open /admin at your client-reachable store origin to generate reviewed
+ExtensionSettings exports. Exports do not apply policies. See examples/policy/.
+{{- if .Values.networkPolicy.offlineRuntime }}
+Offline build/store egress denial requested. Requires an enforcing CNI; audit
+other matching NetworkPolicies because allowances are additive.
+{{- end }}
