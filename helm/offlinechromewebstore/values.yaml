@@ -1,0 +1,68 @@
+# Shared settings
+registry: docker.io
+imagePullSecrets: []
+
+# Persistence shared by the three components. In an air-gapped cluster,
+# populate the artifacts PVC externally (e.g. copy a mirror produced on an
+# online machine) and set cwssync.enabled=false.
+#
+# Lifecycle notes:
+# - With the default ReadWriteOnce access mode all pods must land on the same
+#   node. Set accessMode=ReadWriteMany with a suitable storage class for
+#   multi-node clusters.
+# - The cwsbuild hook Job runs on install/upgrade and may run while cwssync
+#   is still mirroring. cwssync writes CRX files atomically (.part + rename),
+#   so the build never sees partial files; if the first build ran before any
+#   mirror existed, re-run `helm upgrade` once artifacts are populated.
+# - The PVCs are annotated helm.sh/resource-policy: keep so uninstalling the
+#   release does not destroy the mirrored content.
+persistence:
+  storageClass: ""
+  artifacts:
+    size: 10Gi
+  assets:
+    size: 5Gi
+  # ReadWriteMany required when pods may land on different nodes.
+  accessMode: ReadWriteOnce
+
+cwssync:
+  enabled: true
+  image:
+    repository: ronel99/cwssync
+    tag: latest
+    pullPolicy: IfNotPresent
+  # Extra environment for the sync container, e.g.:
+  #   CWS_SYNC_INTERVAL_HOURS: "12"
+  env: {}
+  # ExtensionTotal API key for malicious-extension risk checks.
+  # Reference an existing secret; never put the key itself in values.
+  extensionTotal:
+    existingSecret: ""
+    secretKey: EXTENSIONTOTAL_API_KEY
+  resources: {}
+
+cwsbuild:
+  enabled: true
+  image:
+    repository: ronel99/cwsbuild
+    tag: latest
+    pullPolicy: IfNotPresent
+  env: {}
+  resources: {}
+
+cwsstore:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ronel99/cwsstore
+    tag: latest
+    pullPolicy: IfNotPresent
+  env: {}
+  service:
+    type: ClusterIP
+    port: 8005
+  ingress:
+    enabled: false
+    className: ""
+    host: cws.local
+  resources: {}

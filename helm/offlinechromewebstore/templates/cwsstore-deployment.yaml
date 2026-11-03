@@ -1,0 +1,67 @@
+{{- if .Values.cwsstore.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ocws.fullname" . }}-cwsstore
+  labels:
+    {{- include "ocws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cwsstore
+spec:
+  replicas: {{ .Values.cwsstore.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "ocws.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: cwsstore
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "ocws.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: cwsstore
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: cwsstore
+          image: {{ include "ocws.image" (dict "registry" $.Values.registry "repository" .Values.cwsstore.image.repository "tag" .Values.cwsstore.image.tag) }}
+          imagePullPolicy: {{ .Values.cwsstore.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8005
+          env:
+            - name: CWS_ARTIFACTS_DIR
+              value: /store/artifacts
+            - name: CWS_ASSETS_DIR
+              value: /store/assets
+            {{- range $key, $value := .Values.cwsstore.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /json
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: artifacts
+              mountPath: /store/artifacts
+            - name: assets
+              mountPath: /store/assets
+          {{- with .Values.cwsstore.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: artifacts
+          persistentVolumeClaim:
+            claimName: {{ include "ocws.fullname" . }}-artifacts
+        - name: assets
+          persistentVolumeClaim:
+            claimName: {{ include "ocws.fullname" . }}-assets
+{{- end }}
