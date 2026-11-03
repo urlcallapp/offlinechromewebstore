@@ -42,6 +42,38 @@ def validate_base_url(value):
     return value.rstrip("/")
 
 
+def _reg_escape(value):
+    """REG_SZ escaping inside a quoted .reg value."""
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _ps_quote(value):
+    """PowerShell single-quoted literal escaping."""
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _windows_registry_file(settings_json):
+    """A .reg import for direct machine-level policy application/testing.
+
+    This is NOT a GPMC/GPO import format; the PowerShell export merges into an
+    existing GPO instead."""
+    return ("Windows Registry Editor Version 5.00\r\n\r\n"
+            "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Google\\Chrome]\r\n"
+            '"ExtensionSettings"="' + _reg_escape(settings_json) + '"\r\n')
+
+
+def _gpo_powershell_script(settings_json):
+    """Review-then-run script merging ExtensionSettings into an existing named GPO.
+
+    Set-GPRegistryValue only writes these values; other GPO settings are kept."""
+    return ("# Requires a management workstation with the RSAT GroupPolicy module and\n"
+            "# rights to edit the GPO. Review every line before running.\n"
+            "$GpoName = 'SET-TO-YOUR-EXISTING-GPO-NAME'\n"
+            "if ($GpoName -eq 'SET-TO-YOUR-EXISTING-GPO-NAME') { throw 'Set $GpoName to your existing GPO first' }\n"
+            "Set-GPRegistryValue -Name $GpoName -Key 'HKLM\\Software\\Policies\\Google\\Chrome' "
+            "-ValueName 'ExtensionSettings' -Type String -Value " + _ps_quote(settings_json) + "\n")
+
+
 def generate_policy(spec, catalog, blocked_ids=()):
     """Return reviewable exports, requiring every administrative choice explicitly."""
     if not isinstance(spec, dict) or set(spec) - {"base_url", "default_mode", "extensions", "blocked_install_message"}:
@@ -77,7 +109,11 @@ def generate_policy(spec, catalog, blocked_ids=()):
             settings[ext_id] = {"installation_mode": "blocked"}
     allowlist = sorted(key for key, val in settings.items()
                        if key != "*" and val["installation_mode"] != "blocked")
+    forcelist = sorted(f"{key};{base_url}/crx" for key, val in settings.items()
+                       if key != "*" and val["installation_mode"] == "force_installed")
+    settings_json = json.dumps(settings, separators=(",", ":"), ensure_ascii=True)
     warnings = [
+        "ExtensionSettings overrides the legacy allowlist/forcelist/blocklist policies; do not deploy both strategies together. The legacy lists below are a reference for environments that have not migrated.",
         "Review and merge with existing enterprise policy before deployment. ExtensionSettings overrides legacy extension policies.",
         "Allowed means permitted, not installed. It does not bypass platform restrictions on off-store installation.",
         "Self-hosted automatic installation on Windows requires eligible managed devices (for example AD domain joined); verify Chrome platform requirements.",
@@ -88,8 +124,13 @@ def generate_policy(spec, catalog, blocked_ids=()):
         warnings.append("HTTP does not protect CRX transport. Prefer HTTPS with a certificate trusted by managed clients.")
     return {
         "extension_settings": settings,
-        "gpo_extension_settings": json.dumps(settings, separators=(",", ":"), ensure_ascii=True),
+        "gpo_extension_settings": settings_json,
         "linux_managed_policy": {"ExtensionSettings": settings},
+        "windows_registry_file": _windows_registry_file(settings_json),
+        "gpo_powershell_script": _gpo_powershell_script(settings_json),
+        # Legacy reference formats (ExtensionSettings takes precedence over all):
+        "extension_install_forcelist": forcelist,
+        "extension_install_sources": [base_url + "/*"],
         # Reference only: do not deploy alongside ExtensionSettings as another policy strategy.
         "extension_allowlist": allowlist,
         "store_url": base_url,

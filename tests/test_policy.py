@@ -95,3 +95,36 @@ def test_cli_offline_no_store_imports(tmp_path):
     assert len(result.stdout.splitlines()) == 1
     result=subprocess.run(command+['--format','linux'],capture_output=True,text=True,check=True)
     assert 'ExtensionSettings' in json.loads(result.stdout)
+
+
+def test_windows_and_legacy_export_formats():
+    from app.policy import generate_policy
+    catalog = [{"extension_id": "a" * 32}, {"extension_id": "b" * 32}]
+    result = generate_policy({"base_url": "https://store.example.internal", "default_mode": "blocked",
+                              "extensions": {"a" * 32: "force_installed", "b" * 32: "allowed"}}, catalog, [])
+    assert result["extension_install_forcelist"] == ["a" * 32 + ";https://store.example.internal/crx"]
+    assert result["extension_install_sources"] == ["https://store.example.internal/*"]
+    registry = result["windows_registry_file"]
+    assert registry.startswith("Windows Registry Editor Version 5.00")
+    assert "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Google\\Chrome]" in registry
+    assert '\\"installation_mode\\":\\"force_installed\\"' in registry  # JSON stays valid after .reg escaping
+    assert registry.count("ExtensionSettings") == 1
+    script = result["gpo_powershell_script"]
+    assert "Set-GPRegistryValue" in script and "SET-TO-YOUR-EXISTING-GPO-NAME" in script
+    assert "-Type String" in script and "3rdparty" not in script
+    assert any("overrides the legacy" in warning for warning in result["warnings"])
+    # PowerShell single-quote escaping survives apostrophes in values.
+    result = generate_policy({"base_url": "https://store.example.internal", "default_mode": "blocked",
+                              "blocked_install_message": "it's blocked", "extensions": {"a" * 32: "allowed"}}, catalog, [])
+    assert "it''s blocked" in result["gpo_powershell_script"]
+
+
+def test_export_bundle_has_no_domain_mutation():
+    """Exports are reviewable artifacts only: no GPO creation, deletion or linking."""
+    from app.policy import generate_policy
+    catalog = [{"extension_id": "a" * 32}]
+    result = generate_policy({"base_url": "https://store.example.internal", "default_mode": "allowed",
+                              "extensions": {"a" * 32: "allowed"}}, catalog, [])
+    script = result["gpo_powershell_script"]
+    for forbidden in ["New-GPO", "Remove-GPO", "New-GPLink", "Set-GPInheritance", "Invoke-GPUpdate /force"]:
+        assert forbidden not in script
