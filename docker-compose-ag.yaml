@@ -4,6 +4,8 @@ services:
       context: .
       dockerfile: cwsoffline/cwsbuild/Dockerfile
     image: cwsbuild
+    # Local CRX extraction/indexing must not use an online service.
+    network_mode: none
     volumes:
       - ./artifacts:/app/artifacts
       - ./assets:/app/assets
