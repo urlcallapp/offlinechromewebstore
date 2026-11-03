@@ -2,6 +2,49 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
+    "openshift": {
+        "type": "object",
+        "required": [
+            "enabled",
+            "route"
+        ],
+        "additionalProperties": false,
+        "properties": {
+            "enabled": {
+                "type": "boolean"
+            },
+            "route": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                    "enabled",
+                    "host",
+                    "annotations",
+                    "insecureEdgeTerminationPolicy"
+                ],
+                "properties": {
+                    "enabled": {
+                        "type": "boolean"
+                    },
+                    "host": {
+                        "type": "string"
+                    },
+                    "annotations": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "string"
+                        }
+                    },
+                    "insecureEdgeTerminationPolicy": {
+                        "enum": [
+                            "Redirect",
+                            "None"
+                        ]
+                    }
+                }
+            }
+        }
+    },
     "registry": {"type": "string", "minLength": 1},
     "imagePullSecrets": {"type": "array", "items": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string", "minLength": 1}}}},
     "networkPolicy": {"type": "object", "required": ["offlineRuntime"], "properties": {"offlineRuntime": {"type": "boolean"}}},

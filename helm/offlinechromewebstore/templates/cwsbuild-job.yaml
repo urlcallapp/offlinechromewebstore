@@ -19,6 +19,7 @@ spec:
         app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/component: cwsbuild
     spec:
+      {{- include "ocws.openshiftPod" . | nindent 6 }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -38,6 +39,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: cwsbuild
+          {{- include "ocws.openshiftContainer" . | nindent 10 }}
           image: {{ include "ocws.image" (dict "registry" $.Values.registry "repository" .Values.cwsbuild.image.repository "tag" .Values.cwsbuild.image.tag) }}
           imagePullPolicy: {{ .Values.cwsbuild.image.pullPolicy }}
           env:
@@ -50,6 +52,10 @@ spec:
               value: {{ $value | quote }}
             {{- end }}
           volumeMounts:
+            {{- if .Values.openshift.enabled }}
+            - name: tmp
+              mountPath: /tmp
+            {{- end }}
             - name: artifacts
               mountPath: /app/artifacts
             - name: assets
@@ -59,6 +65,10 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
       volumes:
+        {{- if .Values.openshift.enabled }}
+        - name: tmp
+          emptyDir: {}
+        {{- end }}
         - name: artifacts
           persistentVolumeClaim:
             claimName: {{ include "ocws.fullname" . }}-artifacts

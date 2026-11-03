@@ -293,3 +293,13 @@ by cwsbuild or cwsstore for identity checks.
 
 Format references: [Chromium CRX3 schema](https://chromium.googlesource.com/chromium/src/+/HEAD/components/crx_file/crx3.proto)
 and [Chromium ID algorithm](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/components/crx_file/id_util.cc).
+
+### OpenShift Helm profile
+
+Chart 0.3 adds an opt-in restricted-security pod profile and edge-TLS OpenShift
+Route. Compose `values-openshift.yaml` with `values-airgapped.yaml` when offline;
+OpenShift by itself does not disable sync. No SCC/anyuid grants or fixed
+namespace UID/fsGroup are created. See [Helm OpenShift setup and acceptance
+checks](helm/offlinechromewebstore/README.md#openshift-profile-chart-03).
+Route rendering and security tests are not live OpenShift admission, PVC,
+router/certificate, or Chrome-install verification.

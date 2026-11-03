@@ -16,3 +16,23 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
 {{- define "ocws.image" -}}
 {{- printf "%s/%s:%s" .registry .repository .tag -}}
 {{- end -}}
+
+{{- define "ocws.openshiftPod" -}}
+{{- if .Values.openshift.enabled }}
+automountServiceAccountToken: false
+securityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+{{- end }}
+{{- end -}}
+
+{{- define "ocws.openshiftContainer" -}}
+{{- if .Values.openshift.enabled }}
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+{{- end }}
+{{- end -}}
