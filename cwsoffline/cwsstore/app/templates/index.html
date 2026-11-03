@@ -14,8 +14,12 @@
                 <div class="card-title-row">
                     <h2 class="extension-name">{{ extension.name }}</h2>
                     <span class="version-badge">v{{ extension.versions[0].version }}</span>
+                    {% if extension.origin %}<span class="origin-badge origin-{{ extension.origin }}">{{ {"in-house": "In-house", "webstore": "Web Store", "local": "Local"}.get(extension.origin, extension.origin) }}</span>{% endif %}
                 </div>
                 <p class="extension-description">{{ extension.description }}</p>
+                {% if extension.tags %}
+                <p class="card-tags">{% for tag in extension.tags %}<span class="card-tag">{{ tag }}</span>{% endfor %}</p>
+                {% endif %}
                 <p class="extension-id">{{ extension.extension_id }}</p>
             </div>
         </a>

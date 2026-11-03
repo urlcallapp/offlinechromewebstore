@@ -15,7 +15,11 @@
         <div class="card-title-row">
             <h1>{{ extension.name }}</h1>
             <span class="version-badge">v{{ extension.versions[0].version }}</span>
+            {% if extension.origin %}<span class="origin-badge origin-{{ extension.origin }}">{{ {"in-house": "In-house", "webstore": "Web Store", "local": "Local"}.get(extension.origin, extension.origin) }}</span>{% endif %}
         </div>
+        {% if extension.tags %}
+        <p class="card-tags">{% for tag in extension.tags %}<span class="card-tag">{{ tag }}</span>{% endfor %}</p>
+        {% endif %}
         <p class="extension-id">{{ extension.extension_id }}</p>
         <a class="btn-primary" href="/download/{{ extension.extension_id }}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

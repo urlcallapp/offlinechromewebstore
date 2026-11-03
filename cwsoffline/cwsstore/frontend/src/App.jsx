@@ -36,6 +36,17 @@ function useTheme() {
   return [theme, toggle]
 }
 
+const ORIGIN_LABELS = {
+  'in-house': 'In-house',
+  'webstore': 'Web Store',
+  'local': 'Local',
+}
+
+function OriginBadge({ origin }) {
+  if (!origin) return null
+  return <span className={'origin-badge origin-' + origin}>{ORIGIN_LABELS[origin] || origin}</span>
+}
+
 function TagChip({ tag, active, onToggle }) {
   return (
     <button
@@ -59,6 +70,7 @@ function ExtensionCard({ ext, onOpen }) {
           <div className="card-title-row">
             <h2 className="extension-name">{ext.name}</h2>
             <span className="version-badge">v{latest.version}</span>
+            <OriginBadge origin={ext.origin} />
           </div>
           <p className="extension-description">{ext.description}</p>
           {ext.tags?.length > 0 && (
@@ -86,6 +98,7 @@ function DetailView({ ext, onBack }) {
           <div className="card-title-row">
             <h1>{ext.name}</h1>
             <span className="version-badge">v{ext.versions[0].version}</span>
+            <OriginBadge origin={ext.origin} />
           </div>
           {ext.tags?.length > 0 && (
             <p className="card-tags">{ext.tags.map((t) => <span key={t} className="card-tag">{t}</span>)}</p>
@@ -121,6 +134,7 @@ export default function App() {
   const [error, setError] = useState(null)
   const [query, setQuery] = useState('')
   const [selectedTags, setSelectedTags] = useState([])
+  const [selectedOrigins, setSelectedOrigins] = useState([])
   const [openId, setOpenId] = useState(null)
 
   useEffect(() => {
@@ -137,10 +151,18 @@ export default function App() {
     return [...tags].sort((a, b) => a.localeCompare(b))
   }, [extensions])
 
+  const allOrigins = useMemo(() => {
+    if (!extensions) return []
+    const origins = new Set()
+    extensions.forEach((e) => e.origin && origins.add(e.origin))
+    return [...origins].sort((a, b) => a.localeCompare(b))
+  }, [extensions])
+
   const visible = useMemo(() => {
     if (!extensions) return []
     const term = query.trim().toLowerCase()
     return extensions.filter((e) => {
+      if (selectedOrigins.length && !selectedOrigins.includes(e.origin)) return false
       if (selectedTags.length && !selectedTags.every((t) => (e.tags || []).includes(t))) return false
       if (!term) return true
       return (
@@ -149,10 +171,12 @@ export default function App() {
         e.extension_id.includes(term)
       )
     })
-  }, [extensions, query, selectedTags])
+  }, [extensions, query, selectedTags, selectedOrigins])
 
   const toggleTag = (tag) =>
     setSelectedTags((cur) => (cur.includes(tag) ? cur.filter((t) => t !== tag) : [...cur, tag]))
+  const toggleOrigin = (origin) =>
+    setSelectedOrigins((cur) => (cur.includes(origin) ? cur.filter((o) => o !== origin) : [...cur, origin]))
 
   const open = openId && extensions ? extensions.find((e) => e.extension_id === openId) : null
 
@@ -199,11 +223,24 @@ export default function App() {
               <h1>Extensions</h1>
               <p className="store-subtitle">{visible.length} of {extensions.length} mirrored locally</p>
             </section>
-            {allTags.length > 0 && (
-              <div className="tag-filter" role="group" aria-label="Filter by tag">
-                {allTags.map((tag) => (
-                  <TagChip key={tag} tag={tag} active={selectedTags.includes(tag)} onToggle={toggleTag} />
-                ))}
+            {(allOrigins.length > 0 || allTags.length > 0) && (
+              <div className="filter-bar">
+                {allOrigins.length > 0 && (
+                  <div className="tag-filter" role="group" aria-label="Filter by origin">
+                    <span className="filter-label">Origin</span>
+                    {allOrigins.map((origin) => (
+                      <TagChip key={origin} tag={ORIGIN_LABELS[origin] || origin} active={selectedOrigins.includes(origin)} onToggle={() => toggleOrigin(origin)} />
+                    ))}
+                  </div>
+                )}
+                {allTags.length > 0 && (
+                  <div className="tag-filter" role="group" aria-label="Filter by tag">
+                    <span className="filter-label">Tags</span>
+                    {allTags.map((tag) => (
+                      <TagChip key={tag} tag={tag} active={selectedTags.includes(tag)} onToggle={toggleTag} />
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             {extensions.length === 0 ? (
@@ -219,7 +256,7 @@ export default function App() {
               </div>
             )}
             {extensions.length > 0 && visible.length === 0 && (
-              <p className="no-results">No extensions match the current search and tags.</p>
+              <p className="no-results">No extensions match the current search and filters.</p>
             )}
           </>
         )}

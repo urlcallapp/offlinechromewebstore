@@ -487,3 +487,28 @@ a:hover { text-decoration: underline; }
 
 /* The [hidden] attribute must win over the flex display above (live search). */
 .extension-card[hidden] { display: none; }
+
+/* ---------- Origin badge + filter labels ---------- */
+
+.origin-badge {
+    flex-shrink: 0;
+    padding: 1px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+}
+.origin-in-house { color: #0b7a44; background: #e6f4ec; border-color: #bfe3cf; }
+[data-theme="dark"] .origin-in-house { color: #7fd6a4; background: #163527; border-color: #245741; }
+
+.filter-bar { display: flex; flex-direction: column; gap: 8px; margin: 0 0 18px; }
+.filter-bar .tag-filter { margin: 0; align-items: center; }
+.filter-label {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin-right: 4px;
+}

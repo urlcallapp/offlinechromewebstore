@@ -424,3 +424,33 @@ a:hover { text-decoration: underline; }
 
 /* The [hidden] attribute must win over the flex display above (live search). */
 .extension-card[hidden] { display: none; }
+
+/* ---------- Classification badges + tags ---------- */
+
+.origin-badge {
+    flex-shrink: 0;
+    padding: 1px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+}
+.origin-in-house { color: #0b7a44; background: #e6f4ec; border-color: #bfe3cf; }
+[data-theme="dark"] .origin-in-house { color: #7fd6a4; background: #163527; border-color: #245741; }
+
+.card-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 8px 0 0;
+}
+.card-tag {
+    padding: 1px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+}

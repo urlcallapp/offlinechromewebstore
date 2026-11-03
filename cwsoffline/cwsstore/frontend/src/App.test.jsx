@@ -8,6 +8,7 @@ const EXTENSIONS = [
     description: 'Block ads and trackers.',
     image_path_url: 'assets/' + 'a'.repeat(32) + '/icon.png',
     tags: ['privacy', 'ad-blocking'],
+    origin: 'webstore',
     versions: [
       { version: '1.0.4', path_url: 'artifacts/extensions/' + 'a'.repeat(32) + '/1.0.4/x.crx' },
       { version: '1.0.0', path_url: 'artifacts/extensions/' + 'a'.repeat(32) + '/1.0.0/x.crx' },
@@ -19,6 +20,7 @@ const EXTENSIONS = [
     description: 'Pretty-print JSON.',
     image_path_url: 'assets/' + 'b'.repeat(32) + '/icon.png',
     tags: ['devtools'],
+    origin: 'in-house',
     versions: [{ version: '1.5.0', path_url: 'artifacts/extensions/' + 'b'.repeat(32) + '/1.5.0/x.crx' }],
   },
   {
@@ -28,6 +30,7 @@ const EXTENSIONS = [
     description: 'No tags key.',
     image_path_url: 'assets/' + 'c'.repeat(32) + '/icon.png',
     versions: [{ version: '0.1', path_url: 'artifacts/extensions/' + 'c'.repeat(32) + '/0.1/x.crx' }],
+    // no origin either: fully legacy entry
   },
 ]
 
@@ -112,6 +115,31 @@ test('entries without a tags field render and produce no chips', async () => {
   render(<App />)
   expect(await screen.findByText('Untagged Legacy')).toBeInTheDocument()
   expect(screen.queryByRole('group', { name: /filter by tag/i })).not.toBeInTheDocument()
+})
+
+test('origin facet filters first-party vs web store extensions', async () => {
+  mockFetch(EXTENSIONS)
+  render(<App />)
+  await screen.findByText('Adblock Plus')
+  const group = screen.getByRole('group', { name: /filter by origin/i })
+  const inHouse = within(group).getByRole('button', { name: 'In-house' })
+  fireEvent.click(inHouse)
+  expect(inHouse).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByText('JSON Formatter Pro')).toBeInTheDocument()
+  expect(screen.queryByText('Adblock Plus')).not.toBeInTheDocument()
+  expect(screen.getByText('1 of 3 mirrored locally')).toBeInTheDocument()
+  fireEvent.click(inHouse)
+  expect(screen.getByText('3 of 3 mirrored locally')).toBeInTheDocument()
+})
+
+test('origin badge renders on cards and entries without origin show none', async () => {
+  mockFetch(EXTENSIONS)
+  render(<App />)
+  await screen.findByText('Adblock Plus')
+  expect(screen.getAllByText('In-house').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('Web Store').length).toBeGreaterThan(0)
+  const legacy = screen.getByText('Untagged Legacy').closest('.extension-card')
+  expect(within(legacy).queryByText('Local')).not.toBeInTheDocument()
 })
 
 test('detail view opens, lists versions and links downloads honestly', async () => {
