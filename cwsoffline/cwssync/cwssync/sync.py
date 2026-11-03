@@ -30,6 +30,30 @@ class ChromeExtensionSync:
             "recommended_extensions.json",
         )
 
+    def load_specified_extensions(self):
+        """Load manually specified extensions, if the file exists.
+
+        Same format as the recommended list: objects with id/name or plain
+        ID strings. Missing file means no manual additions.
+        """
+        path = config.SPECIFIED_EXTENSIONS_FILE
+        if not os.path.exists(path):
+            return []
+        with open(path, "r") as handle:
+            return json.load(handle)
+
+    def load_extensions(self):
+        """Recommended extensions merged with manually specified ones.
+
+        Manually specified entries win on ID conflicts so a custom name can
+        override the recommended one.
+        """
+        merged = {}
+        for ext in self.load_recommended_extensions() + self.load_specified_extensions():
+            ext_id = ext["id"] if isinstance(ext, dict) else ext
+            merged[ext_id] = ext
+        return list(merged.values())
+
     def load_recommended_extensions(self):
         """Load the recommended extension list (objects with id and name)."""
         if not os.path.exists(self.extensions_file):
@@ -43,7 +67,7 @@ class ChromeExtensionSync:
         from datetime import datetime
 
         logger.info("Starting sync at %s", datetime.now())
-        extensions = self.load_recommended_extensions()
+        extensions = self.load_extensions()
         failures = 0
 
         for ext in extensions:
