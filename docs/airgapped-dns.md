@@ -38,34 +38,42 @@ installs and ongoing updates from an internal server.
 Two conditions decide whether `clients2.google.com` (update service) and
 `chromewebstore.google.com` (store UI) can be pointed at a private server:
 
-1. HSTS. Checked against `net/http/transport_security_state_static.json` in
-   chromium/src @ main (2026-11-03): neither `google.com`,
-   `clients2.google.com` nor `chromewebstore.google.com` has a static
-   (preloaded) HSTS entry. HSTS for these names is only learned dynamically
-   from a response header, so a Chrome profile that has never reached the real
-   google.com - the normal situation in an air-gapped network - carries no
-   HSTS state for them. Machines that did visit the real google.com may hold
-   dynamic HSTS with `includeSubDomains`; dynamic entries can be cleared per
-   machine or avoided with fresh managed profiles.
-2. Certificates. If HTTPS is enforced anyway (dynamic HSTS, or simply
-   browsing to https://), a private server cannot present a publicly trusted
-   certificate for a Google name. On managed devices an enterprise root CA can
-   be installed locally and issue the certificate; Certificate Transparency
-   only applies to publicly trusted CAs, and locally installed roots are
-   exempt (googlechrome.github.io/CertificateTransparency/enterprises.html).
-   Chrome removed its static Google key pins years ago, so locally rooted
-   interception is no longer blocked by pinning.
+### 1. HSTS
 
-What this does NOT establish: that interception actually works. Absence of a
-static HSTS entry is only one precondition. Dynamic HSTS state carried from
-previous real-Google visits, per-browser handling of locally installed roots,
-certificate name/policy checks and Chrome version behavior can each still
-block the connection, and none of that was verified against a live browser.
-Treat "enterprise CA + DNS override" as an unproven hypothesis, not a
-guaranteed route. Even if it works, it reimplements what the extension
-policies already give you, and spoofing `chromewebstore.google.com`
-additionally means mirroring a complex dynamic web app, not just the update
-protocol.
+- Checked against `net/http/transport_security_state_static.json` in
+  chromium/src @ main (2026-11-03): neither `google.com`,
+  `clients2.google.com` nor `chromewebstore.google.com` has a static
+  (preloaded) HSTS entry.
+- HSTS for these names is only learned dynamically from a response header, so
+  a Chrome profile that has never reached the real google.com - the normal
+  situation in an air-gapped network - carries no HSTS state for them.
+- Machines that did visit the real google.com may hold dynamic HSTS with
+  `includeSubDomains`; dynamic entries can be cleared per machine or avoided
+  with fresh managed profiles.
+
+### 2. Certificates
+
+- If HTTPS is enforced anyway (dynamic HSTS, or simply browsing to https://),
+  a private server cannot present a publicly trusted certificate for a Google
+  name.
+- On managed devices an enterprise root CA can be installed locally and issue
+  the certificate; Certificate Transparency only applies to publicly trusted
+  CAs, and locally installed roots are exempt
+  (googlechrome.github.io/CertificateTransparency/enterprises.html).
+- Chrome removed its static Google key pins years ago, so locally rooted
+  interception is no longer blocked by pinning.
+
+### What this does NOT establish
+
+That interception actually works. Absence of a static HSTS entry is only one
+precondition. Dynamic HSTS state carried from previous real-Google visits,
+per-browser handling of locally installed roots, certificate name/policy
+checks and Chrome version behavior can each still block the connection, and
+none of that was verified against a live browser. Treat "enterprise CA + DNS
+override" as an unproven hypothesis, not a guaranteed route. Even if it works,
+it reimplements what the extension policies already give you, and spoofing
+`chromewebstore.google.com` additionally means mirroring a complex dynamic web
+app, not just the update protocol.
 
 ## Recommendation
 
