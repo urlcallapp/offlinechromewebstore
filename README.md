@@ -32,41 +32,50 @@ On the non-Internet connected system, **cwsstore**:
 
 ## Online/offline boundary
 
-Only **cwssync** runs in the Internet-connected environment. It downloads CRXs,
-resolves source metadata, and optionally checks Web Store IDs with ExtensionTotal.
-The ExtensionTotal API key belongs only on that online sync host. Do not transfer
-the key or configure it on cwsbuild/cwsstore.
+**Only cwssync runs in the Internet-connected environment.**
 
-Transfer the **artifacts directory**, not just individual CRXs, across the
-boundary. Preserve the `extensions/<id>/<version>/*.crx` paths and include
-`extension_metadata.json` (origin, tags and description) and
-`malicious_extensions.json` (the local blocklist), when present. Without these
-sidecars CRXs can still be built, but source labels fall back to `local` and
-there are no transferred blocklist decisions. Copy a completed sync snapshot,
-not files still being written by a running sync.
+- It downloads CRXs, resolves source metadata, and optionally checks Web Store
+  IDs with ExtensionTotal.
+- The ExtensionTotal API key belongs only on that online sync host. Do not
+  transfer the key or configure it on cwsbuild/cwsstore.
 
-Inside the air-gapped/offline environment, **cwsbuild** reads those local CRXs
-and sidecars, extracts icons/metadata and writes `extensions_info.json` plus
-`assets/`. It never calls ExtensionTotal or the Web Store. **cwsstore** serves
-those local files, update feeds and the bundled UI without outbound Internet
-access. The local blocklist remains enforced by both build and store. Remote
-risk lookups are not part of offline-store acceptance.
+**Transfer the artifacts directory, not just individual CRXs, across the
+boundary.**
 
-Build the images online (or in a separate build environment); image builds
-install dependencies and are not an offline runtime step. On the
-offline host, preload the cwsbuild/cwsstore images, then use the air-gapped
-Compose file explicitly so cwssync is not started:
+- Preserve the `extensions/<id>/<version>/*.crx` paths and include
+  `extension_metadata.json` (origin, tags and description) and
+  `malicious_extensions.json` (the local blocklist), when present.
+- Without these sidecars CRXs can still be built, but source labels fall back
+  to `local` and there are no transferred blocklist decisions.
+- Copy a completed sync snapshot, not files still being written by a running
+  sync.
+
+**Inside the air-gapped/offline environment:**
+
+- **cwsbuild** reads those local CRXs and sidecars, extracts icons/metadata and
+  writes `extensions_info.json` plus `assets/`. It never calls ExtensionTotal
+  or the Web Store.
+- **cwsstore** serves those local files, update feeds and the bundled UI
+  without outbound Internet access.
+- The local blocklist remains enforced by both build and store. Remote risk
+  lookups are not part of offline-store acceptance.
+- Build the images online (or in a separate build environment); image builds
+  install dependencies and are not an offline runtime step.
+
+On the offline host, preload the cwsbuild/cwsstore images, then use the
+air-gapped Compose file explicitly so cwssync is not started:
 
 ```bash
 docker compose -f docker-compose-ag.yaml run --rm --no-deps --pull never cwsbuild
 docker compose -f docker-compose-ag.yaml up --no-deps --pull never -d cwsstore
 ```
 
-The builder has networking disabled in this Compose file. The store needs only
-inbound access from local clients; restrict its outbound traffic using your
-network/cluster policy. For Helm, set `cwssync.enabled=false`, preload the images
-and populate the artifacts PVC before the build Job runs. No live ExtensionTotal
-key or service is required in that cluster.
+- The builder has networking disabled in this Compose file.
+- The store needs only inbound access from local clients; restrict its outbound
+  traffic using your network/cluster policy.
+- For Helm, set `cwssync.enabled=false`, preload the images and populate the
+  artifacts PVC before the build Job runs. No live ExtensionTotal key or
+  service is required in that cluster.
 
 ## Requirements
 * Docker (ideally with docker-compose for simplicity)
@@ -257,24 +266,32 @@ optional), for example `artifacts/extensions/internal/MyTool.crx`, then run
 The name and version come from `manifest.json`. The original CRX bytes and path
 are preserved for download and updates; packages are never re-signed or renamed.
 
-`cwsbuild` derives the ID from the CRX3 header's 16-byte `crx_id` and checks
-that at least one developer public-key hash matches it. Additional publisher
-proofs are allowed. Legacy CRX2 identity is derived from its public key; this
-is parsing compatibility, not a promise that current Chrome accepts CRX2.
-Keep the same private signing key for future versions to retain the same ID.
-Do not copy the private key into the artifacts directory.
+**ID derivation:**
 
-Existing `<id>.crx` and `<id>_<name>_<version>.crx` filenames continue to work.
-When the first underscore-delimited segment is a valid 32-character `a`-`p` ID,
-it **must match** the header-derived ID. A mismatch is logged and the package
-is excluded before assets, metadata, blocklist checks or update entries can be
-assigned to a wrong ID. The blocklist and optional `extension_metadata.json`
-classification use the derived ID, including for arbitrarily named packages.
-Directory names and a manifest `key` are never used as an identity fallback.
-For local in-house metadata, key the sidecar by this derived ID. If you also
-use cwssync's in-house inventory declarations, its existing
-`extensions/<id>/<version>/*.crx` inventory convention still applies; sync does
-not discover arbitrary first-party paths or upload them to the Web Store.
+- `cwsbuild` derives the ID from the CRX3 header's 16-byte `crx_id` and checks
+  that at least one developer public-key hash matches it. Additional publisher
+  proofs are allowed.
+- Legacy CRX2 identity is derived from its public key; this is parsing
+  compatibility, not a promise that current Chrome accepts CRX2.
+- Keep the same private signing key for future versions to retain the same ID.
+  Do not copy the private key into the artifacts directory.
+
+**Filename and metadata rules:**
+
+- Existing `<id>.crx` and `<id>_<name>_<version>.crx` filenames continue to work.
+- When the first underscore-delimited segment is a valid 32-character `a`-`p`
+  ID, it **must match** the header-derived ID. A mismatch is logged and the
+  package is excluded before assets, metadata, blocklist checks or update
+  entries can be assigned to a wrong ID.
+- The blocklist and optional `extension_metadata.json` classification use the
+  derived ID, including for arbitrarily named packages.
+- Directory names and a manifest `key` are never used as an identity fallback.
+- For local in-house metadata, key the sidecar by this derived ID. If you also
+  use cwssync's in-house inventory declarations, its existing
+  `extensions/<id>/<version>/*.crx` inventory convention still applies; sync
+  does not discover arbitrary first-party paths or upload them to the Web Store.
+
+**Rejected packages:**
 
 Malformed/truncated/oversized headers, unsupported CRX versions, missing proof
 fields, key/ID conflicts, and plain unsigned ZIPs renamed `.crx` are explicitly
