@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="A self-hosted extension mirror. Browse local packages and serve Chrome extension updates without relying on a live public store."
+      content="Your own Chrome extension store. Serve packages, policies, and updates entirely from your network - no public store required."
     />
     <meta name="theme-color" content="#0c1220" />
     <link rel="icon" type="image/png" href="logo.png" />
@@ -109,18 +109,12 @@
         place-items: center;
         width: 38px;
         height: 38px;
-        border: 1px solid #658b94;
-        border-radius: 10px;
-        overflow: hidden;
+        flex: none;
       }
       .mark img {
         display: block;
         width: 100%;
         height: 100%;
-        color: var(--accent);
-        font-family: monospace;
-        font-size: 18px;
-        flex: none;
       }
       .repo {
         display: inline-flex;
@@ -271,7 +265,6 @@
       }
       .details-grid {
         display: grid;
-        grid-template-columns: 1fr 1fr;
         gap: 28px;
         padding-bottom: 48px;
       }
@@ -289,32 +282,6 @@
         font-size: 14px;
         color: var(--muted);
         margin: 0;
-      }
-      .transcript {
-        border: 1px solid var(--line);
-        border-radius: 12px;
-        padding: 0 24px;
-        align-self: start;
-      }
-      .transcript summary {
-        cursor: pointer;
-        min-height: 64px;
-        display: list-item;
-        list-style-position: inside;
-        font-weight: 600;
-        padding-block: 18px;
-      }
-      .transcript p {
-        font-size: 14px;
-        color: var(--muted);
-        margin: 0 0 18px;
-      }
-      .transcript h3 {
-        font-size: 14px;
-        margin: 0 0 8px;
-      }
-      .transcript[open] {
-        padding-bottom: 8px;
       }
       footer {
         border-top: 1px solid var(--line);
@@ -367,9 +334,6 @@
         }
         .demo {
           width: 100%;
-        }
-        .details-grid {
-          grid-template-columns: 1fr;
         }
         .section-head {
           display: block;
@@ -452,9 +416,6 @@
         .note {
           padding: 20px;
         }
-        .transcript {
-          padding-inline: 20px;
-        }
         .details-grid {
           gap: 20px;
           padding-bottom: 32px;
@@ -477,7 +438,6 @@
         }
         .video-frame,
         .note,
-        .transcript,
         .tag,
         .mark {
           border: 1px solid CanvasText;
@@ -504,18 +464,18 @@
     <main class="wrap" id="main" tabindex="-1">
       <section class="hero" aria-labelledby="title">
         <div>
-          <p class="eyebrow">A local extension store</p>
+          <p class="eyebrow">Self-hosted Chrome extension store</p>
           <h1 id="title">
             Your Chrome extensions. <span>On your own network.</span>
           </h1>
           <p class="intro">
-            A self-hosted extension mirror. Browse local packages and serve
-            Chrome extension updates without relying on a live public store.
+            Sync once, then serve packages, install policies, and updates
+            from your own network - no public store required.
           </p>
           <div class="tags" aria-label="Project highlights">
-            <span class="tag">Self-hosted</span
-            ><span class="tag">CRX packages</span
-            ><span class="tag">Local updates</span>
+            <span class="tag">Air-gapped ready</span
+            ><span class="tag">SSO &amp; LDAP</span
+            ><span class="tag">Force-install policies</span>
           </div>
         </div>
         <figure class="demo">
@@ -537,17 +497,11 @@
                 label="English"
                 default
               />
-              <p>
-                Your browser does not support embedded video. Read the
-                transcript below instead.
-              </p>
+              <p>Your browser does not support embedded video.</p>
             </video>
           </div>
           <figcaption class="caption" id="video-caption">
-            <span
-              ><strong>The 15-second tour</strong><br />English narration ·
-              captions · music</span
-            ><span class="sr-only" id="video-desc">The demo opens with "Chrome extensions, served from your own network", shows a catalog of extension cards with download controls, and closes with "Your extension catalog. Available locally."</span>
+            <span><strong>Watch the 15-second tour</strong></span><span class="sr-only" id="video-desc">The demo opens with "Chrome extensions, served from your own network", shows a catalog of extension cards with download controls, and closes with "Your extension catalog. Available locally."</span>
           </figcaption>
         </figure>
       </section>
@@ -591,18 +545,6 @@
             yours.
           </p>
         </aside>
-        <details class="transcript">
-          <summary>Read the video transcript</summary>
-          <h3>Narration</h3>
-          <p>
-            Chrome extensions served from your own network. A self-hosted
-            extension mirror. Download packages and serve extension updates over
-            your local network. Your extension catalog, available locally.
-          </p>
-          <p>
-            Background music accompanies the narration.
-          </p>
-        </details>
       </div>
     </main>
     <footer>
