@@ -8,6 +8,7 @@
       content="A self-hosted extension mirror. Browse local packages and serve Chrome extension updates without relying on a live public store."
     />
     <meta name="theme-color" content="#0c1220" />
+    <link rel="icon" type="image/png" href="logo.png" />
     <title>Chrome extensions offline | offlinechromewebstore</title>
     <style>
       :root {
@@ -98,6 +99,12 @@
         height: 38px;
         border: 1px solid #658b94;
         border-radius: 10px;
+        overflow: hidden;
+      }
+      .mark img {
+        display: block;
+        width: 100%;
+        height: 100%;
         color: var(--accent);
         font-family: monospace;
         font-size: 18px;
@@ -193,13 +200,6 @@
       .caption strong {
         color: var(--ink);
         font-weight: 600;
-      }
-      .caption a {
-        display: inline-flex;
-        align-items: center;
-        min-height: 44px;
-        margin-top: -10px;
-        white-space: nowrap;
       }
       .section {
         padding: 36px 0;
@@ -418,9 +418,6 @@
           flex-wrap: wrap;
           gap: 4px;
         }
-        .caption a {
-          margin-top: 0;
-        }
         h2 {
           font-size: 21px;
         }
@@ -481,7 +478,8 @@
     <header>
       <nav class="wrap" aria-label="Project">
         <div class="brand">
-          <span class="mark" aria-hidden="true">&lt;/&gt;</span
+          <span class="mark" aria-hidden="true"
+            ><img src="logo.png" alt="" width="38" height="38" /></span
           ><span>Chrome extensions offline</span>
         </div>
         <a
@@ -512,6 +510,7 @@
           <div class="video-frame">
             <video
               controls
+              controlsList="nodownload"
               playsinline
               preload="metadata"
               poster="poster.jpg"
@@ -527,8 +526,8 @@
                 default
               />
               <p>
-                Your browser does not support embedded video. Use the download
-                link below.
+                Your browser does not support embedded video. Read the
+                transcript below instead.
               </p>
             </video>
           </div>
@@ -536,8 +535,6 @@
             <span
               ><strong>The 15-second tour</strong><br />English narration ·
               captions · music</span
-            ><a href="demo.mp4" download
-              >Download video <span aria-hidden="true">&nbsp;↓</span></a
             >
           </figcaption>
         </figure>
@@ -590,15 +587,8 @@
             extension mirror. Download packages and serve extension updates over
             your local network. Your extension catalog, available locally.
           </p>
-          <h3>What the video shows</h3>
           <p>
-            The demo opens with "Chrome extensions, served from your own
-            network", shows a catalog of extension cards with download controls,
-            and closes with "Your extension catalog. Available locally."
-          </p>
-          <p>
-            Background music accompanies the narration. Use the player controls
-            to pause, change volume, or turn captions on and off.
+            Background music accompanies the narration.
           </p>
         </details>
       </div>
