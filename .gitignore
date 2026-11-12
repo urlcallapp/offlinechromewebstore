@@ -180,3 +180,6 @@ assets/
 
 node_modules/
 intake/
+
+# GitHub Pages demo bundle (Vite output); without this the JS/CSS is silently dropped
+!docs/demo/assets/
