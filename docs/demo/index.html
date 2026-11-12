@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Offline Chrome Web Store</title>
+    <link rel="icon" type="image/png" href="/offlinechromewebstore/demo/favicon.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Offline Chrome Web Store - UI demo" />
+    <meta property="og:description" content="Interactive demo of the self-hosted Chrome extension store UI. Packages are not served in this demo." />
+    <meta property="og:image" content="https://urlcallapp.github.io/offlinechromewebstore/og-thumbnail.jpg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      // Apply the saved or OS-preferred theme before first paint.
+      (function () {
+        var saved = null;
+        try { saved = localStorage.getItem('theme'); } catch (e) {}
+        var theme = saved || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', theme);
+      })();
+    </script>
+    <script type="module" crossorigin src="/offlinechromewebstore/demo/assets/index-BPlHVW71.js"></script>
+    <link rel="stylesheet" crossorigin href="/offlinechromewebstore/demo/assets/index-CIFobcdu.css">
+  </head>
+  <body>
+    <noscript>JavaScript is disabled. <a href="/classic">Open the classic storefront</a> to browse and download extensions.</noscript>
+    <div id="root"></div>
+  </body>
+</html>

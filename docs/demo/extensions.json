@@ -1,0 +1,110 @@
+[
+  {
+    "name": "Acme SSO Helper",
+    "extension_id": "ggmhdhnlfpghpnnajchdkadkgnmjbbni",
+    "description": "One-click sign-in for Acme internal apps on networks without Internet access.",
+    "image_path_url": "icons/acme-sso.svg",
+    "tags": [
+      "security",
+      "enterprise"
+    ],
+    "origin": "in-house",
+    "versions": [
+      {
+        "version": "2.3.1",
+        "path_url": "artifacts/ggmhdhnlfpghpnnajchdkadkgnmjbbni/2.3.1.crx"
+      },
+      {
+        "version": "2.3.0",
+        "path_url": "artifacts/ggmhdhnlfpghpnnajchdkadkgnmjbbni/2.3.0.crx"
+      }
+    ]
+  },
+  {
+    "name": "Adventure Works Security Audit",
+    "extension_id": "fncgcknihjheadhpopbneidcnepehpfe",
+    "description": "Scans internal pages for mixed content, weak ciphers and outdated TLS settings.",
+    "image_path_url": "icons/adv-works.svg",
+    "tags": [
+      "security",
+      "reporting"
+    ],
+    "origin": "in-house",
+    "versions": [
+      {
+        "version": "1.0.4",
+        "path_url": "artifacts/fncgcknihjheadhpopbneidcnepehpfe/1.0.4.crx"
+      }
+    ]
+  },
+  {
+    "name": "Contoso Screenshot Notes",
+    "extension_id": "dceahkjolenbphhbecknojkobcpeagip",
+    "description": "Capture, annotate and file screenshots straight into Contoso projects.",
+    "image_path_url": "icons/contoso-shot.svg",
+    "tags": [
+      "productivity"
+    ],
+    "origin": "webstore",
+    "versions": [
+      {
+        "version": "4.2.0",
+        "path_url": "artifacts/dceahkjolenbphhbecknojkobcpeagip/4.2.0.crx"
+      },
+      {
+        "version": "4.1.3",
+        "path_url": "artifacts/dceahkjolenbphhbecknojkobcpeagip/4.1.3.crx"
+      }
+    ]
+  },
+  {
+    "name": "Fabrikam Tab Organizer",
+    "extension_id": "jllkebpjfbdplgopnnkkjlikifbklihd",
+    "description": "Groups, suspends and searches tabs across windows to keep memory in check.",
+    "image_path_url": "icons/fabrikam-tabs.svg",
+    "tags": [
+      "productivity",
+      "tabs"
+    ],
+    "origin": "webstore",
+    "versions": [
+      {
+        "version": "3.5.2",
+        "path_url": "artifacts/jllkebpjfbdplgopnnkkjlikifbklihd/3.5.2.crx"
+      }
+    ]
+  },
+  {
+    "name": "Northwind Forms Autofill",
+    "extension_id": "npodghnobpbeefpaokfpaaocpdoaekll",
+    "description": "Fills repeatable procurement and HR forms with saved profiles.",
+    "image_path_url": "icons/northwind-forms.svg",
+    "tags": [
+      "productivity",
+      "forms"
+    ],
+    "origin": "webstore",
+    "versions": [
+      {
+        "version": "1.9.0",
+        "path_url": "artifacts/npodghnobpbeefpaokfpaaocpdoaekll/1.9.0.crx"
+      }
+    ]
+  },
+  {
+    "name": "Tailspin PDF Toolkit",
+    "extension_id": "hafhdebkhjlhknmfgpfggplnhmibcbbm",
+    "description": "Merge, split and sign PDFs locally - nothing is uploaded anywhere.",
+    "image_path_url": "icons/tailspin-pdf.svg",
+    "tags": [
+      "documents"
+    ],
+    "origin": "webstore",
+    "versions": [
+      {
+        "version": "5.0.1",
+        "path_url": "artifacts/hafhdebkhjlhknmfgpfggplnhmibcbbm/5.0.1.crx"
+      }
+    ]
+  }
+]
